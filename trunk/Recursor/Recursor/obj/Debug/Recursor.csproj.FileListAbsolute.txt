@@ -1,0 +1,16 @@
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\bin\Debug\Recursor.exe
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\bin\Debug\Recursor.pdb
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Debug\ResolveAssemblyReference.cache
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Debug\Recursor.Recursor.resources
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Debug\Recursor.Properties.Resources.resources
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Debug\Recursor.csproj.GenerateResource.Cache
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Debug\Recursor.exe
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Debug\Recursor.pdb
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Debug\Recursor.exe
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Debug\Recursor.pdb
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\bin\Debug\Recursor.exe
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\bin\Debug\Recursor.pdb
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Debug\Recursor.Recursor.resources
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Debug\Recursor.Properties.Resources.resources
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Debug\Recursor.csproj.GenerateResource.Cache

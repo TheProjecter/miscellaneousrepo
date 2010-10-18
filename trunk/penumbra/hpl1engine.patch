@@ -1,0 +1,188 @@
+diff --git a/HPL.sln b/HPL.sln
+index f388f57..719c629 100644
+--- a/HPL.sln
++++ b/HPL.sln
+@@ -1,21 +1,19 @@
+-Microsoft Visual Studio Solution File, Format Version 8.00
+-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HPL", "HPL.vcproj", "{0780DEC5-A930-4721-9364-17A49D2A4E60}"
+-	ProjectSection(ProjectDependencies) = postProject
+-	EndProjectSection
++Microsoft Visual Studio Solution File, Format Version 11.00
++# Visual Studio 2010
++Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HPL", "HPL.vcxproj", "{0780DEC5-A930-4721-9364-17A49D2A4E60}"
+ EndProject
+ Global
+-	GlobalSection(SolutionConfiguration) = preSolution
+-		Debug = Debug
+-		Release = Release
++	GlobalSection(SolutionConfigurationPlatforms) = preSolution
++		Debug|Win32 = Debug|Win32
++		Release|Win32 = Release|Win32
+ 	EndGlobalSection
+-	GlobalSection(ProjectConfiguration) = postSolution
+-		{0780DEC5-A930-4721-9364-17A49D2A4E60}.Debug.ActiveCfg = Release|Win32
+-		{0780DEC5-A930-4721-9364-17A49D2A4E60}.Debug.Build.0 = Release|Win32
+-		{0780DEC5-A930-4721-9364-17A49D2A4E60}.Release.ActiveCfg = Release|Win32
+-		{0780DEC5-A930-4721-9364-17A49D2A4E60}.Release.Build.0 = Release|Win32
++	GlobalSection(ProjectConfigurationPlatforms) = postSolution
++		{0780DEC5-A930-4721-9364-17A49D2A4E60}.Debug|Win32.ActiveCfg = Debug|Win32
++		{0780DEC5-A930-4721-9364-17A49D2A4E60}.Debug|Win32.Build.0 = Debug|Win32
++		{0780DEC5-A930-4721-9364-17A49D2A4E60}.Release|Win32.ActiveCfg = Release|Win32
++		{0780DEC5-A930-4721-9364-17A49D2A4E60}.Release|Win32.Build.0 = Release|Win32
+ 	EndGlobalSection
+-	GlobalSection(ExtensibilityGlobals) = postSolution
+-	EndGlobalSection
+-	GlobalSection(ExtensibilityAddIns) = postSolution
++	GlobalSection(SolutionProperties) = preSolution
++		HideSolutionNode = FALSE
+ 	EndGlobalSection
+ EndGlobal
+diff --git a/include/system/SerializeClass.h b/include/system/SerializeClass.h
+index b155e15..ae3b542 100644
+--- a/include/system/SerializeClass.h
++++ b/include/system/SerializeClass.h
+@@ -24,6 +24,7 @@
+ #include "system/MemoryManager.h"
+ 
+ class TiXmlElement;
++class TiXmlPrinter;
+ 
+ namespace hpl {
+ 
+@@ -319,9 +320,11 @@ namespace hpl {
+ 
+ 		static bool SaveToFile(iSerializable* apData, const tWString &asFile,const tString &asRoot);
+ 		static void SaveToElement(iSerializable* apData,const tString &asName, TiXmlElement *apParent, bool abIsPointer=false);
++        static TiXmlPrinter SaveToBuf(iSerializable* apData, const tString &asRoot);
+ 
+ 		static bool LoadFromFile(iSerializable* apData, const tWString &asFile);
+ 		static void LoadFromElement(iSerializable* apData, TiXmlElement *apElement, bool abIsPointer=false);
++        static bool LoadFromBuf(iSerializable* apData, const char *buf);
+ 
+ 		static cSerializeSavedClass * GetClass(const tString &asName);
+ 
+diff --git a/sources/game/Game.cpp b/sources/game/Game.cpp
+index f2262fb..fb3202b 100644
+--- a/sources/game/Game.cpp
++++ b/sources/game/Game.cpp
+@@ -349,13 +349,13 @@ namespace hpl {
+ 		
+ 		mpLogicTimer->Reset();
+ 
++
+ 		//Loop the game... fix the var...
+ 		unsigned long lTempTime = GetApplicationTime();
+ 		
+ 		//reset the mouse, really reset the damn thing :P
+ 		for(int i=0;i<10;i++) mpInput->GetMouse()->Reset();
+ 		
+-		
+ 		Log("Game Running\n");
+ 		Log("--------------------------------------------------------\n");
+ 
+diff --git a/sources/physics/CharacterBody.cpp b/sources/physics/CharacterBody.cpp
+index 1ce0258..137e4eb 100644
+--- a/sources/physics/CharacterBody.cpp
++++ b/sources/physics/CharacterBody.cpp
+@@ -628,6 +628,7 @@ namespace hpl {
+ 
+ 	void iCharacterBody::Update(float afTimeStep)
+ 	{
++        // TODO: this here method makes the camera shaky, since it updates the position again after being set
+ 		if(mbActive == false) return;
+ 
+ 		//Clear attached body
+diff --git a/sources/scene/Camera3D.cpp b/sources/scene/Camera3D.cpp
+index 8bef714..20da846 100644
+--- a/sources/scene/Camera3D.cpp
++++ b/sources/scene/Camera3D.cpp
+@@ -135,8 +135,10 @@ namespace hpl {
+ 		
+ 		if(mvYawLimits.x!=0 || mvYawLimits.y!=0)
+ 		{
+-			if(mfYaw> mvYawLimits.x)mfYaw = mvYawLimits.x;
+-			if(mfYaw< mvYawLimits.y)mfYaw = mvYawLimits.y;
++			if(mfYaw> mvYawLimits.x)
++                mfYaw = mvYawLimits.x;
++			if(mfYaw< mvYawLimits.y)
++                mfYaw = mvYawLimits.y;
+ 		}
+ 		
+ 		mbViewUpdated = true; mbMoveUpdated = true;
+diff --git a/sources/system/SerializeClass.cpp b/sources/system/SerializeClass.cpp
+index c3f1616..721fb82 100644
+--- a/sources/system/SerializeClass.cpp
++++ b/sources/system/SerializeClass.cpp
+@@ -226,9 +226,34 @@ namespace hpl {
+ 		return bRet;
+ 	}
+ 
++
++
+ 	//-----------------------------------------------------------------------
+ 
+ 
++	TiXmlPrinter cSerializeClass::SaveToBuf(iSerializable* apData, const tString &asRoot)
++	{
++		SetUpData();
++
++		glTabs=0;
++
++		TiXmlDocument* pXmlDoc = hplNew( TiXmlDocument, () );
++
++		//Create root
++		TiXmlElement XmlRoot(asRoot.c_str());
++		TiXmlElement* pRootElem = static_cast<TiXmlElement*>(pXmlDoc->InsertEndChild(XmlRoot));
++
++		SaveToElement(apData,"",pRootElem);
++
++        TiXmlPrinter printer;
++	    pXmlDoc->Accept( &printer );
++        hplDelete(pXmlDoc);
++
++        return printer;
++	}
++
++	//-----------------------------------------------------------------------
++
+ 	void cSerializeClass::SaveToElement(iSerializable* apData,const tString &asName, TiXmlElement *apParent,
+ 										bool abIsPointer)
+ 	{
+@@ -331,6 +356,37 @@ namespace hpl {
+ 
+ 	//-----------------------------------------------------------------------
+ 
++	bool cSerializeClass::LoadFromBuf(iSerializable* apData, const char *buf)
++	{
++		SetUpData();
++
++		glTabs=0;
++
++		//Load document
++		TiXmlDocument* pXmlDoc = hplNew( TiXmlDocument,() );
++
++		if(pXmlDoc->Parse(buf) == NULL)
++		{
++			Error("Couldn't parse buffer!\n",
++									pXmlDoc->ErrorDesc());
++			hplDelete(pXmlDoc);
++			return false;
++		}
++
++		//Get root
++		TiXmlElement* pRootElem = pXmlDoc->RootElement();
++
++		//Get first, there should only be ONE class at the root.
++		TiXmlElement* pClassElem = pRootElem->FirstChildElement("class");
++
++		LoadFromElement(apData,pClassElem);
++
++		hplDelete(pXmlDoc);
++		return true;
++	}
++
++	//-----------------------------------------------------------------------
++
+ 	void cSerializeClass::LoadFromElement(iSerializable* apData, TiXmlElement *apElement,
+ 											bool abIsPointer)
+ 	{

@@ -1,0 +1,72 @@
+Index: include/m_protoint.h
+===================================================================
+--- include/m_protoint.h	(revision 12636)
++++ include/m_protoint.h	(working copy)
+@@ -44,6 +44,9 @@
+ 	#define PROTOFILEEVENT PROTORECVFILE
+ #endif
+ 
++typedef void (__cdecl * PFEVENT) ( HANDLE hContact, HANDLE hdbe, LPARAM lParam );
++extern PFEVENT pfEvent;
++
+ #ifndef __cplusplus
+ typedef struct tagPROTO_INTERFACE_VTBL
+ {
+Index: src/core/modules.cpp
+===================================================================
+--- src/core/modules.cpp	(revision 12636)
++++ src/core/modules.cpp	(working copy)
+@@ -209,7 +209,7 @@
+ 	if (!disableDefaultModule[DEFMOD_SRURL]) if (LoadSendRecvUrlModule()) return 1;
+ 	if (!disableDefaultModule[DEFMOD_SREMAIL]) if (LoadSendRecvEMailModule()) return 1;
+ 	if (!disableDefaultModule[DEFMOD_SRAUTH]) if (LoadSendRecvAuthModule()) return 1;
+-	if (!disableDefaultModule[DEFMOD_SRFILE]) if (LoadSendRecvFileModule()) return 1;
++	if (!disableDefaultModule[DEFMOD_SRFILE]) if (LoadSendRecvFileModule()) { return 1; } else { pfEvent = &PushFileEvent; }
+ 	if (!disableDefaultModule[DEFMOD_UIHELP]) if (LoadHelpModule()) return 1;
+ 	if (!disableDefaultModule[DEFMOD_UIHISTORY]) if (LoadHistoryModule()) return 1;
+ 	if (!disableDefaultModule[DEFMOD_RNDIDLE]) if (LoadIdleModule()) return 1;
+Index: src/modules/plugins/newplugins.cpp
+===================================================================
+--- src/modules/plugins/newplugins.cpp	(revision 12636)
++++ src/modules/plugins/newplugins.cpp	(working copy)
+@@ -1072,6 +1072,9 @@
+ 					if ( pluginDefModList[rm] == NULL ) {
+                         if ( bpi.Load(&pluginCoreLink) == 0 ) {
+                             p->pclass |= PCLASS_LOADED;
++							if (bpi.pluginInfo->replacesDefaultModule == DEFMOD_SRFILE) {
++									pfEvent = (PFEVENT)GetProcAddress(bpi.hInst, "PushFileEvent");
++							}
+                             msgModule |= (bpi.pluginInfo->replacesDefaultModule == DEFMOD_SRMESSAGE);
+                         }
+ 						else {
+Index: src/modules/protocols/protocols.cpp
+===================================================================
+--- src/modules/protocols/protocols.cpp	(revision 12636)
++++ src/modules/protocols/protocols.cpp	(working copy)
+@@ -29,6 +29,8 @@
+ static HANDLE hAckEvent,hTypeEvent;
+ static BOOL bModuleInitialized = FALSE;
+ 
++PFEVENT pfEvent;
++
+ typedef struct
+ {
+ 	const char* name;
+@@ -155,7 +157,7 @@
+ 	HANDLE hdbe = ( HANDLE )CallService( MS_DB_EVENT_ADD, ( WPARAM )ccs->hContact, ( LPARAM )&dbei );
+ 
+ 	if ( pre->lParam != NULL )
+-		PushFileEvent( ccs->hContact, hdbe, pre->lParam );
++		pfEvent( ccs->hContact, hdbe, pre->lParam );
+ 	return 0;
+ }
+ 
+@@ -213,7 +215,7 @@
+ 
+ 	HANDLE hdbe = ( HANDLE )CallService( MS_DB_EVENT_ADD, ( WPARAM )ccs->hContact, ( LPARAM )&dbei );
+ 
+-	PushFileEvent( ccs->hContact, hdbe, pre->lParam );
++	pfEvent( ccs->hContact, hdbe, pre->lParam );
+ 	mir_free( dbei.pBlob );
+ 	return 0;
+ }

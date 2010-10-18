@@ -1,0 +1,16 @@
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\bin\Release\Recursor.exe
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\bin\Release\Recursor.pdb
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Release\ResolveAssemblyReference.cache
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Release\Recursor.Recursor.resources
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Release\Recursor.Properties.Resources.resources
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Release\Recursor.csproj.GenerateResource.Cache
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Release\Recursor.exe
+E:\Documents and Settings\john smith\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Release\Recursor.pdb
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Release\Recursor.exe
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Release\Recursor.pdb
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\bin\Release\Recursor.exe
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Release\ResolveAssemblyReference.cache
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Release\Recursor.Recursor.resources
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Release\Recursor.Properties.Resources.resources
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\obj\Release\Recursor.csproj.GenerateResource.Cache
+C:\Users\johnsmith\Desktop\dox\old_dox\My Documents\Visual Studio 2008\Projects\Recursor\Recursor\bin\Release\Recursor.pdb
