@@ -1,0 +1,1201 @@
+diff --git a/Client.cpp b/Client.cpp
+new file mode 100644
+index 0000000..7eebc03
+--- /dev/null
++++ b/Client.cpp
+@@ -0,0 +1,255 @@
++/*
++ * Copyright (C) 2006-2010 - Frictional Games
++ *
++ * This file is part of HPL1 Engine.
++ *
++ * HPL1 Engine is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * HPL1 Engine is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with HPL1 Engine.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "Client.h"
++#include "MapHandler.h"
++#include "Init.h"
++#include "SaveHandler.h"
++#include "Player.h"
++#include "ButtonHandler.h"
++#include "Network.h"
++#include <iostream>
++
++#define CLIENT_PORT 55001
++
++using namespace hpl;
++
++void cClient::Close() {
++    #ifdef WIN32
++    if (mpHandle && TerminateThread(mpHandle, 0)) {
++        CloseHandle(mpHandle);
++    }
++    #endif
++    closesocket(mlTcpFd);
++    closesocket(mlUdpFd);
++    #ifdef WIN32
++    WSACleanup();
++    #endif
++    if (mpPacket) {
++        delete mpPacket;
++    }
++    DeleteCriticalSection(&sendLock);
++}
++
++cClient::~cClient() {
++    Close();
++}
++
++static void handle_tcp(void *arg)
++{
++    cClient *client = (cClient*)arg;
++
++    char *buf;
++    int len;
++    buf = client->mpPacket;
++
++    len = recv(client->mlTcpFd, buf, BUFLEN, 0);
++
++    if (len == 0 || (len < 0 && WSAGetLastError() != WSAEWOULDBLOCK)) {
++        // TODO: connection was closed by server, exit map and cut back to main menu
++        // and other more graceful error handling..
++        return;
++    } else if (len < 0) {
++        // this is a nonblocking socket, continue
++        return;
++    }
++
++    // TODO: handle server reply
++    if (*buf == PING_CMD) {
++
++    } else if (*buf == BYE_CMD) {
++
++    } else {
++        // attempt to load map
++        tString sPkt(buf);
++        int i = sPkt.find_first_of(',');
++        if (i == sPkt.npos) {
++            // key string not found, ignore packet
++            return;
++        }
++
++        client->msStartMap = sPkt.substr(0, i) + ".dae";
++        client->msStartLink = sPkt.substr(i + 1, sPkt.length() - i - 1);
++        client->mbGotMapData = true;
++    }
++}
++
++static void handle_udp(void *arg)
++{
++    cClient *client = (cClient*)arg;
++
++    char *buf;
++    int len;
++    buf = client->mpPacket;
++
++    int l = sizeof(struct sockaddr);
++    struct sockaddr_in cAddr;
++
++    len = recvfrom(client->mlUdpFd, buf, BUFLEN, 0, (struct sockaddr*)&cAddr, &l);
++
++    if (len <= 0) {
++            return;
++    }
++
++    buf[len] = 0;
++
++    if (*buf == STATE_UPDATE_CMD) {
++        char cmd;
++        unsigned long state;
++        sscanf(buf, "%c %lu", &cmd, &state);
++
++        // check that packet is in a new (not already processed) state
++        if (state > client->lastReceivedState) {
++            client->lastReceivedState = state;
++            // skip first two fields when processing packet
++            tString s(buf);
++            s = s.substr(2);
++            s = s.substr(s.find(' ') + 1);
++            client->mpInit->mpNetwork->AddData(s);
++
++            // ack it
++            sprintf(client->mpPacket, "%c %lu", ACK_CMD, client->lastReceivedState);
++            sendto(client->mlUdpFd, client->mpPacket, BUFLEN, 0, (struct sockaddr*)&client->mAddr, sizeof(client->mAddr));
++        }
++
++    } else if (*buf == ACK_CMD) {
++        char cmd;
++        unsigned long state;
++        sscanf(buf, "%c %lu", &cmd, &state);
++        // update last confirmed state by other endpoint
++        if (client->lastAckedState < state) client->lastAckedState = state;
++    }
++}
++
++cClient::cClient(const char* apIp, unsigned short asPort, cInit *apInit) {
++    struct sockaddr_in listen_addr;
++    char reuseaddr_on = 1;
++    mpHandle = NULL;
++    mpPacket = new char[BUFLEN];
++    mpInit = apInit;
++    mbGotMapData = false;
++    mlNPackets = 0;
++    mlLastSend = 0;
++    currentState = 0;
++    lastAckedState = 0;
++    lastReceivedState = 0;
++
++    #ifdef WIN32
++    if (!InitializeCriticalSectionAndSpinCount(&sendLock, 
++        0x80000400))
++        err(1, "Could not initialize critical section");
++    WSADATA info;
++    if (WSAStartup(MAKEWORD(2,0), &info)) {
++        err(1, "Could not start WSA",  WSAGetLastError());
++    }
++    #endif
++
++    // the upd socket
++    mlUdpFd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
++    if (mlUdpFd < 0)
++        err(1, "socket create failed",  WSAGetLastError());
++    set_nonblock(mlUdpFd);
++    if (setsockopt(mlUdpFd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr_on,
++        sizeof(reuseaddr_on)) == -1)
++        err(1, "setsockopt failed",  WSAGetLastError());
++    memset(&listen_addr, 0, sizeof(listen_addr));
++
++    listen_addr.sin_family = PF_INET;
++    listen_addr.sin_port = htons(CLIENT_PORT);
++    listen_addr.sin_addr.s_addr = htonl(INADDR_ANY);
++
++    if (bind(mlUdpFd, (struct sockaddr *)&listen_addr,
++        sizeof(listen_addr)) < 0)
++        err(1, "bind failed",  WSAGetLastError());
++
++    // the tcp socket
++    memset(&mAddr, 0, sizeof(mAddr));
++    mAddr.sin_family = AF_INET;
++    mAddr.sin_port = htons(asPort);
++    mAddr.sin_addr.s_addr = inet_addr(apIp);
++
++    mlTcpFd = socket(AF_INET,SOCK_STREAM,0);
++    if (mlTcpFd < 0)
++        err(1, "socket create failed",  WSAGetLastError());
++    if (connect(mlTcpFd, (struct sockaddr *)&mAddr, sizeof(mAddr)) < 0)
++        err(1, "connect failed",  WSAGetLastError());
++    set_nonblock(mlTcpFd);
++
++    // send the initial new client command
++    char* pkt = mpPacket;
++    *pkt++ = NEW_CLIENT_CMD;
++    *pkt++ = listen_addr.sin_port & 0xff;
++    *pkt++ = listen_addr.sin_port >> 8; 
++    *pkt = 0;
++    if (sendto(mlTcpFd, mpPacket, BUFLEN, 0, (struct sockaddr*)&mAddr, sizeof(mAddr)) < 0)
++            err(1, "send error",  WSAGetLastError());
++}
++
++static unsigned int __stdcall loop(void *arg) {
++    cClient* client = (cClient*)arg;
++
++    for (;;) {
++        unsigned long time = GetApplicationTime();
++        handle_udp(arg);
++        handle_tcp(arg);
++        client->SendPending();
++        // very interesting it seems that the client cannot afford to run two threads at the same time
++        // while the server can easily do it, maybe because of repeating a simple instruction over and over
++        // thus consuming more cpu cycles
++        // the server does more than just that.. while in the client we have to sleep to make it not lag
++        if (GetApplicationTime() - time < 20)
++            Sleep(20);
++    }
++    return 0;
++}
++
++void cClient::Loop() {
++    unsigned int ret;
++    mpHandle = (HANDLE)_beginthreadex(0,0, loop, this, 0, &ret);
++}
++
++void cClient::SendPending() {
++    if (lastAckedState < currentState) {
++        EnterCriticalSection(&sendLock);
++        // send latest update to server if it wasn't ack'ed already
++        if (lastAckedState < currentState) {
++            sendto(mlUdpFd, msPacket.c_str(), msPacket.length(), 0, (struct sockaddr*)&mAddr, sizeof(mAddr));
++        }
++        LeaveCriticalSection(&sendLock);
++    }
++}
++
++void cClient::Send(int type, const char* data) {
++    EnterCriticalSection(&sendLock);
++    currentState++;
++    msPacket = type;
++    msPacket += " ";
++    // insert state
++    char c[32];
++    sprintf(c, "%lu", currentState);
++    msPacket += c;
++    msPacket += " ";
++    msPacket += data;
++    LeaveCriticalSection(&sendLock);
++    sendto(mlUdpFd, msPacket.c_str(), msPacket.length(), 0, (struct sockaddr*)&mAddr, sizeof(mAddr));
++}
++
++void cClient::SendTcp(const char* data) {
++    sendto(mlTcpFd, data, BUFLEN, 0, (struct sockaddr*)&mAddr, sizeof(mAddr));
++}
+diff --git a/Client.h b/Client.h
+new file mode 100644
+index 0000000..13c46c8
+--- /dev/null
++++ b/Client.h
+@@ -0,0 +1,71 @@
++/*
++ * Copyright (C) 2006-2010 - Frictional Games
++ *
++ * This file is part of HPL1 Engine.
++ *
++ * HPL1 Engine is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * HPL1 Engine is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with HPL1 Engine.  If not, see <http://www.gnu.org/licenses/>.
++ */
++#ifndef CLIENT_H
++#define CLIENT_H
++
++#include "StdAfx.h"
++#include "NetworkDefs.h"
++
++using namespace hpl;
++
++class cInit;
++class cNetwork;
++
++static unsigned int __stdcall loop(void *arg);
++static unsigned int __stdcall loopUdp(void *arg);
++
++class cClient {
++public:
++    cClient(const char* apIp, unsigned short asPort, cInit *apInit);
++    ~cClient();
++    void Close();
++    void Loop();
++    int mlTcpFd;
++    int mlUdpFd;
++    void Send(int type, const char* data);
++    void SendTcp(const char* data);
++    void SendPending();
++
++    sockaddr_in mAddr;
++    char *mpPacket;
++    cInit *mpInit;
++    bool mbGotMapData;
++    tString msStartMap;
++    tString msStartLink;
++    CRITICAL_SECTION sendLock;
++
++    // last client state ack'd by server
++    unsigned long lastAckedState;
++    // last state sent by server
++    unsigned long lastReceivedState;
++private:
++    #ifdef WIN32
++    HANDLE mpHandle;
++    #endif
++
++    unsigned long mlLastSend;
++    tString msPacket;
++    int mlNPackets;
++
++    // current state of the client
++    unsigned long currentState;
++};
++
++
++#endif
+diff --git a/Network.cpp b/Network.cpp
+new file mode 100644
+index 0000000..9fbadc0
+--- /dev/null
++++ b/Network.cpp
+@@ -0,0 +1,131 @@
++/*
++ * Copyright (C) 2006-2010 - Frictional Games
++ *
++ * This file is part of HPL1 Engine.
++ *
++ * HPL1 Engine is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * HPL1 Engine is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with HPL1 Engine.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "Network.h"
++#include "Server.h"
++#include "Client.h"
++#include "Init.h"
++#include "Player.h"
++
++using namespace hpl;
++
++cNetwork::cNetwork() : iUpdateable("Network")
++{
++    InitializeCriticalSectionAndSpinCount(&dataLock, 
++        0x80000400);
++
++    mpClient = NULL;
++    mpServer = NULL;
++    mpInit = NULL;
++}
++
++cNetwork::cNetwork(cClient *apClient, cServer *apServer, cInit *apInit) : iUpdateable("Network")
++{
++    InitializeCriticalSectionAndSpinCount(&dataLock, 
++        0x80000400);
++
++    mpClient = apClient;
++    mpServer = apServer;
++    mpInit = apInit;
++}
++
++cNetwork::~cNetwork()
++{
++    if (mpClient) {
++        delete mpClient;
++        mpClient = NULL;
++    }
++
++    if (mpServer) {
++        delete mpServer;
++        mpServer = NULL;
++    }
++
++    DeleteCriticalSection(&dataLock);
++}
++
++void cNetwork::AddUpdate(int mlType, const char *apData) {
++    if (msPacket.length() > 0)
++        msPacket += PACKET_SEP;
++
++    msPacket += mlType;
++    msPacket += " ";
++    msPacket += apData;
++}
++
++// commits updates to the network
++void cNetwork::CommitUpdates() {
++    if (mpClient)
++        mpClient->Send(STATE_UPDATE_CMD, msPacket.c_str());
++
++    if (mpServer)
++        mpServer->Send(STATE_UPDATE_CMD, msPacket.c_str());
++
++    msPacket = "";
++}
++
++// sets data to process
++void cNetwork::AddData(tString asData) {
++    EnterCriticalSection(&dataLock);
++    //mvData.insert(mvData.begin(), asData);
++    msData = asData;
++    LeaveCriticalSection(&dataLock);
++}
++
++// applies updates, locally
++void cNetwork::Update(float afTimeStep) {
++    if (!mpInit || msData.length() < 1/*mvData.size() < 1*/) return;
++
++    EnterCriticalSection(&dataLock);
++    tString data = msData;//mvData.back();
++    //mvData.pop_back();
++    LeaveCriticalSection(&dataLock);
++
++    size_t n = data.find(PACKET_SEP);
++    int off = 0;
++    do {
++        char c = data[0];
++        tString s = data.substr(0, n == data.npos ? data.length() : n);
++
++        switch (c) {
++            case YAW_PITCH_UPDATE:
++                float yaw, pitch;
++                char c;
++                sscanf(s.c_str(), "%c %g %g", &c, &yaw, &pitch);
++                mpInit->mpPlayer->GetCamera()->SetYaw(yaw);
++                mpInit->mpPlayer->GetCharacterBody()->SetYaw(yaw);
++                mpInit->mpPlayer->GetCamera()->SetPitch(pitch);
++            break;
++
++            case MOVEMENT_UPDATE:
++                cVector3f v, v2;
++                sscanf(s.c_str(), "%c %g %g %g %g %g %g", &c, &v.x, &v.y, &v.z, &v2.x, &v2.y, &v2.z);
++                mpInit->mpPlayer->GetCharacterBody()->SetPosition(v, true);
++                mpInit->mpPlayer->GetCamera()->SetPosition(v2);
++            break;
++        }
++
++        if (n == data.npos) break;
++        off = n + 1;
++        n = data.find(off, PACKET_SEP);
++        data = data.substr(off);
++    } while (true);
++
++    msData = "";
++}
+diff --git a/Network.h b/Network.h
+new file mode 100644
+index 0000000..51471c5
+--- /dev/null
++++ b/Network.h
+@@ -0,0 +1,65 @@
++/*
++ * Copyright (C) 2006-2010 - Frictional Games
++ *
++ * This file is part of HPL1 Engine.
++ *
++ * HPL1 Engine is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * HPL1 Engine is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with HPL1 Engine.  If not, see <http://www.gnu.org/licenses/>.
++ */
++#ifndef NETWORK_H
++#define NETWORK_H
++
++#define YAW_PITCH_UPDATE    0x01
++#define MOVEMENT_UPDATE     0x02
++
++#include "StdAfx.h"
++#include "NetworkDefs.h"
++
++using namespace hpl;
++using namespace std;
++
++class cInit;
++class cClient;
++class cServer;
++
++class cNetwork : public iUpdateable {
++public:
++    cNetwork();
++    cNetwork(cClient* apClient, cServer* apServer, cInit *apInit);
++    ~cNetwork();
++    void AddUpdate(int mlType, const char *apData);
++    void CommitUpdates();
++
++    void AddData(tString asData);
++    void ProcessData();
++
++	// Events
++    void OnWorldLoad(){}
++	void OnWorldExit(){}
++	void OnStart(){}
++	void Update(float afTimeStep);
++	void Reset(){}
++	void OnDraw(){}
++	void OnPostSceneDraw(){}
++
++    cClient *mpClient;
++    cServer *mpServer;
++    cInit *mpInit;
++private:
++    //vector<tString> mvData;
++    tString msPacket, msData;
++    CRITICAL_SECTION dataLock;
++};
++
++
++#endif
+\ No newline at end of file
+diff --git a/NetworkDefs.h b/NetworkDefs.h
+new file mode 100644
+index 0000000..cf8df1d
+--- /dev/null
++++ b/NetworkDefs.h
+@@ -0,0 +1,136 @@
++/*
++ * Copyright (C) 2006-2010 - Frictional Games
++ *
++ * This file is part of HPL1 Engine.
++ *
++ * HPL1 Engine is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * HPL1 Engine is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with HPL1 Engine.  If not, see <http://www.gnu.org/licenses/>.
++ */
++#ifndef NETWORK_DEFS_H
++#define NETWORK_DEFS_H
++
++#include <sys/types.h>
++#include <sys/stat.h>
++#ifndef WIN32
++#include <unistd.h>
++#include <sys/time.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#include <sys/socket.h>
++#else
++#include <WinSock2.h>
++#include <Ws2tcpip.h>
++#include <windows.h>
++#include <process.h>
++#endif
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include <errno.h>
++#include <vector>
++#include <map>
++#include "impl/tinyXML/tinyxml.h"
++#include <iostream>
++#include <fstream>
++
++#ifndef WIN32
++#define closesocket close
++#endif
++
++/* tcp commands */
++#define NEW_CLIENT_CMD  0x01
++#define MAP_LOADED_CMD  0x02
++#define PING_CMD        0x03
++#define BYE_CMD         0x04
++
++/* udp commands */
++#define STATE_UPDATE_CMD      0x10
++#define ACK_CMD               0x11
++
++/* udp packet separator */
++#define PACKET_SEP            0x99
++
++/* client states */
++#define CONNECTED_STATE     0
++#define INITIALIZED_STATE   1
++#define MAP_LOADED_STATE    2
++
++#define SEND_EVERY_X_PACKETS    20
++#define SEND_EVERY_X_SECONDS    .25f
++
++// packet structure:
++// first byte is always command type (NEW_CLIENT_CMD has only one byte for now)
++
++// second byte is sequence id (the number of the last packet in the sequence, adds up over time)
++// third byte is the number of the packet in the sequence
++// fourth .. n bytes are actual data bytes
++// when n sequence packets have been received the packets are assembled in order
++
++// Nononono, TCP must be used to initialize the client and ping/disconnection (including getting the ip/port for the client's UDP endpoint)
++// UDP should only be used for sending game state/player updates to clients
++
++
++/* Maximum length of each UDP packet */
++#define BUFLEN 1024
++
++#define LOG_FILE "log.txt"
++
++static void warn(const char *msg) {
++    fprintf(stderr, msg);
++    std::ofstream out(LOG_FILE, std::ios::out|std::ios::app);
++    out << "WARN " << msg << std::endl;
++    out.close();
++}
++
++static void warn(int code, const char *msg, int err) {
++    fprintf(stderr, "WARN %s: %d", msg, err);
++    std::ofstream out(LOG_FILE, std::ios::out|std::ios::app);
++    out << msg << ": " << err << std::endl;
++    out.close();
++    exit(code);
++}
++
++static void err(int code, const char *msg) {
++    warn(msg);
++    std::ofstream out(LOG_FILE, std::ios::out|std::ios::app);
++    out << "ERROR " << msg << std::endl;
++    out.close();
++    exit(code);
++}
++
++static void err(int code, const char *msg, int err) {
++    fprintf(stderr, "ERROR %s: %d", msg, err);
++    std::ofstream out(LOG_FILE, std::ios::out|std::ios::app);
++    out << msg << ": " << err << std::endl;
++    out.close();
++    exit(code);
++}
++
++static void set_nonblock(int fd) {
++#ifdef WIN32
++    u_long iMode = 1;
++    if (ioctlsocket(fd, FIONBIO, &iMode) < 0)
++        err(1, "setnonblock failed");
++#else
++	int flags;
++
++	flags = fcntl(fd, F_GETFL);
++	if (flags < 0)
++		err(1, "setnonblock failed");
++	flags |= O_NONBLOCK;
++	if (fcntl(fd, F_SETFL, flags) < 0)
++        err(1, "setnonblock failed");
++#endif
++}
++
++#endif
+\ No newline at end of file
+diff --git a/Server.cpp b/Server.cpp
+new file mode 100644
+index 0000000..9dbbd3c
+--- /dev/null
++++ b/Server.cpp
+@@ -0,0 +1,419 @@
++/*
++ * Copyright (C) 2006-2010 - Frictional Games
++ *
++ * This file is part of HPL1 Engine.
++ *
++ * HPL1 Engine is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * HPL1 Engine is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with HPL1 Engine.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "Server.h"
++#include "MapHandler.h"
++#include "Player.h"
++#include "Init.h"
++#include "SaveHandler.h"
++#include "ButtonHandler.h"
++#include "Network.h"
++
++using namespace hpl;
++
++static void build_select_list(cServer *server) {
++	int listnum;
++	FD_ZERO(&server->socks);
++	FD_SET(server->mlTcpFd, &server->socks);
++	
++	/* Loops through all the possible connections and adds
++		those sockets to the fd_set */
++	
++	for (listnum = 0; listnum < MAX_CLIENTS; listnum++) {
++		if (server->clients[listnum] != 0) {
++			FD_SET(server->clients[listnum], &server->socks);
++			if (server->clients[listnum] > server->mlHighSock)
++				server->mlHighSock = server->clients[listnum];
++		}
++	}
++}
++
++void handle_new_connection(cServer *server) {
++	int listnum;	     /* Current item in connectlist for for loops */
++	int connection; /* Socket file descriptor for incoming connections */
++    sockaddr_in addr;
++    int l = sizeof(addr);
++
++	connection = accept(server->mlTcpFd, (struct sockaddr*)&addr, &l);
++	if (connection < 0) {
++		err(1, "accept error",  WSAGetLastError());
++	}
++	set_nonblock(connection);
++    int i = 0;
++
++	for (listnum = 0; (listnum < MAX_CLIENTS) && (connection != -1); listnum ++)
++		if (server->clients[listnum] == 0) {
++			server->clients[listnum] = connection;
++            i = listnum;
++			connection = -1;
++		}
++
++	if (connection != -1) {
++		/* No room left in the queue! */
++		closesocket(connection);
++	} else {
++        gmClientData[i] = new struct client_data;
++        gmClientData[i]->ip = addr.sin_addr.s_addr;
++        gmClientData[i]->state = CONNECTED_STATE;
++        gmClientData[i]->lastAckedState = 0;
++        gmClientData[i]->lastReceivedState = 0;
++    }
++}
++
++void deal_with_data(int listnum, cServer *server) {
++    int len;
++    char *buf = server->mpPacket;
++    len = recv(server->clients[listnum], buf, BUFLEN, 0);
++
++    if (len <= 0) {
++        // disconnect client
++        delete gmClientData[listnum];
++        gmClientData.erase(listnum);
++
++        closesocket(server->clients[listnum]);
++        server->clients[listnum] = 0;
++
++        return;
++    }
++
++    if (len < 3) {
++        // packet too small, ignore
++        return;
++    }
++
++    // TODO: pings
++
++    // here we handle the received message
++    if (*buf == NEW_CLIENT_CMD) {
++        if (gmClientData[listnum]->state == CONNECTED_STATE) {
++            // store the client's UDP port
++            unsigned char lo = *(++buf);
++            unsigned char hi = *(++buf);
++
++            USHORT port = (0xffff & lo) | (hi << 8);
++            gmClientData[listnum]->port = port;
++            gmClientData[listnum]->state = INITIALIZED_STATE;
++        } else {
++            return;
++        }
++
++        // if new client, send it the map name and start position
++        tString sPkt = server->mpInit->mpMapHandler->GetCurrentMapName();
++        sPkt += "," + server->mpInit->mpPlayer->msStartPos;
++
++        if (send(server->clients[listnum], sPkt.c_str(), sPkt.length() + 1, 0) < 0)
++            err(1, "send error",  WSAGetLastError());
++    } else if (*buf == MAP_LOADED_CMD) {
++        // set the map loaded state
++        gmClientData[listnum]->state = MAP_LOADED_STATE;
++    }
++}
++
++void read_socks(cServer *server) {
++	int listnum;	     /* Current item in connectlist for for loops */
++	
++	if (FD_ISSET(server->mlTcpFd, &server->socks))
++		handle_new_connection(server);
++	
++	/* Run through our sockets and check to see if anything
++		happened with them, if so 'service' them. */
++	for (listnum = 0; listnum < MAX_CLIENTS; listnum++) {
++		if (FD_ISSET(server->clients[listnum], &server->socks))
++			deal_with_data(listnum, server);
++	} /* for (all entries in queue) */
++}
++
++static void handle_tcp(void *arg)
++{
++    cServer *server = (cServer*)arg;
++    struct timeval timeout;  /* Timeout for select */
++
++	build_select_list(server);
++	timeout.tv_sec = 1;
++	timeout.tv_usec = 0;
++
++	int readsocks = select(server->mlHighSock + 1, &server->socks, (fd_set *) 0, (fd_set *) 0, &timeout);
++		
++	if (readsocks < 0) {
++		err(1, "select failed",  WSAGetLastError());
++	}
++	if (readsocks > 0) {
++		read_socks(server);
++    }
++}
++
++static void handle_udp(void *arg)
++{
++    cServer *server = (cServer*)arg;
++
++    char *buf;
++    int len;
++    buf = server->mpPacketUdp;
++
++    int l = sizeof(struct sockaddr);
++    struct sockaddr_in cAddr;
++
++    len = recvfrom(server->mlUdpFd, buf, BUFLEN, 0, (struct sockaddr*)&cAddr, &l);
++
++    if (len <= 0) {
++            return;
++    }
++
++    // find which client it was
++    client_data* d = NULL;
++    for (map<int, client_data*>::iterator it = gmClientData.begin(); it != gmClientData.end(); it++) {
++        int i = it->first;
++        client_data* tmp = gmClientData[i];
++        if (tmp->ip == cAddr.sin_addr.s_addr) {
++            d = tmp;
++            break;
++        }
++    }
++
++    if (!d) {
++        // couldn't find which client sent the response, abort
++        return;
++    }
++
++    buf[len] = 0;
++
++    // TODO: movement updates, inventory, notebook, etc.
++    // for this purpose the packet should be a command sequence, that is contain multiple updates if applicable (yaw/pitch update, movement update etc)
++    // so we need to use PACKET_SEP again to split them
++    // client side simulations will be needed (if for example packet loss is too big) so that movement doesn't appear laggy, i guess
++    if (*buf == STATE_UPDATE_CMD) {
++        char cmd;
++        unsigned long state;
++        sscanf(buf, "%c %lu", &cmd, &state);
++
++        // check that packet is in a new (not already processed) state
++        if (state > d->lastReceivedState) {
++            d->lastReceivedState = state; 
++            // skip first two fields when processing packet
++            tString s(buf);
++            s = s.substr(2);
++            s = s.substr(s.find(' ') + 1);
++            tString bcPkt = s;
++            server->mpInit->mpNetwork->AddData(s);
++
++            // ack it
++            sprintf(server->mpPacket, "%c %lu", ACK_CMD, d->lastReceivedState);
++            sendto(server->mlUdpFd, server->mpPacket, BUFLEN, 0, (struct sockaddr*)&cAddr, l);
++
++            // broadcast to other clients
++            EnterCriticalSection(&server->sendLock);
++            server->currentState++;
++            char bc[BUFLEN];
++            sprintf(bc, "%c %lu ", cmd, server->currentState);
++            bcPkt = bc + bcPkt;
++
++            for (map<int, client_data*>::iterator it = gmClientData.begin(); it != gmClientData.end(); it++) {
++                int i = it->first;
++                client_data* tmp = gmClientData[i];
++                if (tmp->ip == d->ip) continue; // skip client that just sent us the update
++
++                struct sockaddr_in addr;
++                memset(&addr, 0, sizeof(addr));
++                addr.sin_family = PF_INET;
++                addr.sin_port = tmp->port;
++                addr.sin_addr.s_addr = tmp->ip;
++
++                if (d->lastAckedState < server->currentState) {
++                    sendto(server->mlUdpFd, bcPkt.c_str(), BUFLEN, 0, (struct sockaddr*)&addr, sizeof(addr));
++                }
++            }
++            LeaveCriticalSection(&server->sendLock);
++        }
++    } else if (*buf == ACK_CMD) {
++        char cmd;
++        unsigned long state;
++        sscanf(buf, "%c %lu", &cmd, &state);
++        // update last confirmed state by other endpoint
++        if (d->lastAckedState < state) d->lastAckedState = state;
++    }
++}
++
++cServer::cServer(const char* apIp, unsigned short asPort, cInit *apInit)
++{
++    struct sockaddr_in listen_addr;
++    char reuseaddr_on = 1;
++    mpHandle = NULL;
++    mpHandleUdp = NULL;
++    mpInit = apInit;
++    mpPacket = new char[BUFLEN];
++    mpPacketUdp = new char[BUFLEN];
++    mlNPackets = 0;
++    mlLastSend = 0;
++    currentState = 0;
++
++    #ifdef WIN32
++    if (!InitializeCriticalSectionAndSpinCount(&sendLock, 
++        0x80000400))
++        err(1, "Could not initialize critical section");
++    WSADATA info;
++    if (WSAStartup(MAKEWORD(2,0), &info)) {
++        err(1, "Could not start WSA", WSAGetLastError());
++    }
++    #endif
++
++    mlUdpFd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
++    if (mlUdpFd < 0)
++        err(1, "socket create failed", WSAGetLastError());
++    set_nonblock(mlUdpFd);
++    if (setsockopt(mlUdpFd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr_on,
++        sizeof(reuseaddr_on)) == -1)
++        err(1, "setsockopt failed", WSAGetLastError());
++    memset(&listen_addr, 0, sizeof(listen_addr));
++
++    listen_addr.sin_family = PF_INET;
++    if (apIp) {
++        listen_addr.sin_addr.s_addr = inet_addr(apIp);
++    } else {
++        listen_addr.sin_addr.s_addr = htonl(INADDR_ANY);
++    }
++
++    listen_addr.sin_port = htons(asPort);
++
++    if (bind(mlUdpFd, (struct sockaddr *)&listen_addr,
++        sizeof(listen_addr)) < 0)
++        err(1, "bind udp failed", WSAGetLastError());
++
++    mlTcpFd = socket(AF_INET,SOCK_STREAM,0);
++    if (mlTcpFd < 0)
++        err(1, "socket create failed", WSAGetLastError());
++    set_nonblock(mlTcpFd);
++    if (setsockopt(mlUdpFd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr_on,
++        sizeof(reuseaddr_on)) == -1)
++        err(1, "setsockopt failed", WSAGetLastError());
++    if (bind(mlTcpFd, (struct sockaddr *)&listen_addr,
++        sizeof(listen_addr)) < 0)
++        err(1, "bind tcp failed", WSAGetLastError());
++
++    if (listen(mlTcpFd, MAX_CLIENTS) < 0)
++        err(1, "listen failed", WSAGetLastError());
++    mlHighSock = mlTcpFd;
++	memset((char *) &clients, 0, sizeof(clients));
++}
++
++void cServer::Close() {
++    #ifdef WIN32
++    if (mpHandle && TerminateThread(mpHandle, 0)) {
++        CloseHandle(mpHandle);
++    }
++    if (mpHandleUdp && TerminateThread(mpHandleUdp, 0)) {
++        CloseHandle(mpHandleUdp);
++    }
++    #endif
++    for (map<int, client_data*>::iterator it = gmClientData.begin(); it != gmClientData.end(); it++) {
++        delete it->second;
++    }
++    gmClientData.clear();
++    closesocket(mlUdpFd);
++    closesocket(mlTcpFd);
++    #ifdef WIN32
++    WSACleanup();
++    #endif
++    if (mpPacket) {
++        delete mpPacket;
++    }
++    if (mpPacketUdp) {
++        delete mpPacketUdp;
++    }
++    DeleteCriticalSection(&sendLock);
++}
++
++cServer::~cServer() {
++    Close();
++}
++
++static unsigned int __stdcall loop(void *arg) {
++    cServer* server = (cServer*)arg;
++
++    for (;;) {
++        handle_tcp(arg);
++        server->SendPending();
++    }
++    return 0;
++}
++
++static unsigned int __stdcall loopUdp(void *arg) {
++    cServer* server = (cServer*)arg;
++
++    for (;;) {
++        handle_udp(arg);
++    }
++    return 0;
++}
++
++void cServer::Loop() {
++    unsigned int ret, ret2;
++    mpHandle = (HANDLE)_beginthreadex(0,0, loop, this, 0, &ret);
++    mpHandleUdp = (HANDLE)_beginthreadex(0,0, loopUdp, this, 0, &ret2);
++}
++
++void cServer::SendPending() {
++    
++    for (map<int, client_data*>::iterator it = gmClientData.begin(); it != gmClientData.end(); it++) {
++        client_data* d = gmClientData[it->first];
++        if (d->state < MAP_LOADED_STATE) continue;
++
++        struct sockaddr_in addr;
++        memset(&addr, 0, sizeof(addr));
++        addr.sin_family = PF_INET;
++        addr.sin_port = d->port;
++        addr.sin_addr.s_addr = d->ip;
++
++        if (d->lastAckedState < currentState) {
++            EnterCriticalSection(&sendLock);
++            // send latest update to client if it wasn't ack'ed already
++            if (d->lastAckedState < currentState) {
++                sendto(mlUdpFd, msPacket.c_str(), msPacket.length(), 0, (struct sockaddr*)&addr, sizeof(addr));
++            }
++            LeaveCriticalSection(&sendLock);
++        }
++    }
++}
++
++void cServer::Send(int type, const char* data) {
++    EnterCriticalSection(&sendLock);
++    currentState++;
++    msPacket = type;
++    msPacket += " ";
++    // insert state
++    char c[32];
++    sprintf(c, "%lu", currentState);
++    msPacket += c;
++    msPacket += " ";
++    msPacket += data;
++    LeaveCriticalSection(&sendLock);
++
++    // send packet to all clients
++    for (map<int, client_data*>::iterator it = gmClientData.begin(); it != gmClientData.end(); it++) {
++        client_data* d = gmClientData[it->first];
++        if (d->state < MAP_LOADED_STATE) continue;
++
++        struct sockaddr_in addr;
++        memset(&addr, 0, sizeof(addr));
++        addr.sin_family = PF_INET;
++        addr.sin_port = d->port;
++        addr.sin_addr.s_addr = d->ip;
++
++        sendto(mlUdpFd, msPacket.c_str(), msPacket.length(), 0, (struct sockaddr*)&addr, sizeof(addr));
++    }
++}
+\ No newline at end of file
+diff --git a/Server.h b/Server.h
+new file mode 100644
+index 0000000..20a1006
+--- /dev/null
++++ b/Server.h
+@@ -0,0 +1,78 @@
++/*
++ * Copyright (C) 2006-2010 - Frictional Games
++ *
++ * This file is part of HPL1 Engine.
++ *
++ * HPL1 Engine is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * HPL1 Engine is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with HPL1 Engine.  If not, see <http://www.gnu.org/licenses/>.
++ */
++#ifndef SERVER_H
++#define SERVER_H
++
++#include "StdAfx.h"
++#include "NetworkDefs.h"
++
++using namespace hpl;
++
++class cInit;
++class cNetwork;
++
++#define MAX_CLIENTS 32
++
++using namespace std;
++
++struct client_data {
++    ULONG ip;
++    USHORT port;
++    unsigned long state;
++    unsigned long lastPing;
++    // last server state acked by client
++    unsigned long lastAckedState;
++    // last strate received from client
++    unsigned long lastReceivedState;
++};
++
++static unsigned int __stdcall loop(void *arg);
++static unsigned int __stdcall loopUdp(void *arg);
++static map<int, client_data*> gmClientData;
++
++class cServer {
++public:
++    cServer(const char *apIp, unsigned short asPort, cInit *apInit);
++    ~cServer();
++    void Loop();
++    void Close();
++    void Send(int type, const char* data);
++    void SendPending();
++
++    int mlTcpFd;
++    int mlUdpFd;
++    int mlHighSock;
++    int clients[MAX_CLIENTS];
++    fd_set socks;
++    char *mpPacket, *mpPacketUdp;
++    cInit *mpInit;
++    CRITICAL_SECTION sendLock;
++    unsigned long currentState;
++private:
++    #ifdef WIN32
++    HANDLE mpHandle, mpHandleUdp;
++    #endif
++
++    unsigned long mlLastSend;
++    tString msPacket;
++    int mlNPackets;
++};
++
++
++#endif
+\ No newline at end of file

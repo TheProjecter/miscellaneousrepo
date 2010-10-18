@@ -1,0 +1,4 @@
+cron:
+- description: tweet job
+  url: /tweet
+  schedule: every 12 minutes

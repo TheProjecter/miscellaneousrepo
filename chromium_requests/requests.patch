@@ -1,0 +1,1261 @@
+Index: chrome/app/chrome_dll.rc
+===================================================================
+--- chrome/app/chrome_dll.rc	(revision 60173)
++++ chrome/app/chrome_dll.rc	(working copy)
+@@ -64,6 +64,7 @@
+     "J",            IDC_DEV_TOOLS_CONSOLE,      VIRTKEY, CONTROL, SHIFT
+     "C",            IDC_DEV_TOOLS_INSPECT,      VIRTKEY, CONTROL, SHIFT
+     "N",            IDC_NEW_INCOGNITO_WINDOW,   VIRTKEY, CONTROL, SHIFT
++    "Z",            IDC_REQUESTS,               VIRTKEY, CONTROL, SHIFT
+     "T",            IDC_NEW_TAB,                VIRTKEY, CONTROL
+     "N",            IDC_NEW_WINDOW,             VIRTKEY, CONTROL
+     "O",            IDC_OPEN_FILE,              VIRTKEY, CONTROL
+Index: chrome/app/chrome_dll_resource.h
+===================================================================
+--- chrome/app/chrome_dll_resource.h	(revision 60173)
++++ chrome/app/chrome_dll_resource.h	(working copy)
+@@ -209,6 +209,7 @@
+ #define IDC_AUTOFILL_DEFAULT            40023
+ #define IDC_DEV_TOOLS_INSPECT           40025
+ #define IDC_UPGRADE_DIALOG              40026
++#define IDC_REQUESTS                    40027
+ 
+ // Spell-check
+ // Insert any additional suggestions before _LAST; these have to be consecutive.
+Index: chrome/app/generated_resources.grd
+===================================================================
+--- chrome/app/generated_resources.grd	(revision 60173)
++++ chrome/app/generated_resources.grd	(working copy)
+@@ -1001,6 +1001,9 @@
+         <message name="IDS_OPTIONS" desc="The text label of the Options menu item">
+           &amp;Options
+         </message>
++        <message name="IDS_REQUESTS" desc="The text label of the Requests menu item" use_name_for_id="true">
++          &amp;Requests
++        </message>
+         <message name="IDS_HELP_PAGE" desc="The text label of the Help menu item">
+           H&amp;elp
+         </message>
+@@ -1036,6 +1039,9 @@
+         <message name="IDS_OPTIONS" desc="In Title Case: The text label of the Options menu item">
+           &amp;Options
+         </message>
++        <message name="IDS_REQUESTS" desc="In Title Case: The text label of the Requests menu item" use_name_for_id="true">
++          &amp;Requests
++        </message>
+         <message name="IDS_HELP_PAGE" desc="In Title Case: The text label of the Help menu item">
+           H&amp;elp
+         </message>
+@@ -3963,6 +3969,17 @@
+         Stay on this Page
+       </message>
+ 
++      <!-- Request table columns -->
++      <message name="IDS_REQ_ID_COLUMN" desc="The Id column in the table" use_name_for_id="true">
++        Id
++      </message>
++      <message name="IDS_REQ_METHOD_COLUMN" desc="The Method column in the table" use_name_for_id="true">
++        Method
++      </message>
++      <message name="IDS_REQ_URL_COLUMN" desc="The URL column in the table" use_name_for_id="true">
++        URL
++      </message>
++
+       <!-- Shelf and Add shelf item dialog -->
+       <message name="IDS_ASI_ADD_TITLE" desc="Title for the shelf item dialog when adding an item.">
+         Add Page
+@@ -5784,6 +5801,12 @@
+         Settings
+       </message>
+ 
++      <!-- Requests Window -->
++      <message name="IDS_REQUESTS_DIALOG_TITLE" desc="The title of the Requests dialog box" use_name_for_id="true">
++        <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> Requests
++      </message>
++
++
+       <!-- Options Window -->
+       <if expr="os != 'darwin'">
+         <message name="IDS_OPTIONS_CHROME_APPS_ENABLE_BACKGROUND_MODE" desc="The label in the checkbox that enables background mode for installed web apps.">
+@@ -5828,6 +5851,10 @@
+         Learn more
+       </message>
+ 
++      <message name="IDS_REQUESTS_GENERAL_TAB_LABEL" desc="The title of the Requests tab" use_name_for_id="true">
++        Requests
++      </message>
++
+       <!-- The About page is now part of options. -->
+       <message name="IDS_ABOUT_PAGE_TITLE" desc="Title used for about options panel">
+       	About
+Index: chrome/browser/browser.cc
+===================================================================
+--- chrome/browser/browser.cc	(revision 60173)
++++ chrome/browser/browser.cc	(working copy)
+@@ -60,6 +60,7 @@
+ #include "chrome/browser/net/browser_url_util.h"
+ #include "chrome/browser/net/url_fixer_upper.h"
+ #include "chrome/browser/options_window.h"
++#include "chrome/browser/requests_window.h"
+ #include "chrome/browser/platform_util.h"
+ #include "chrome/browser/prefs/pref_service.h"
+ #include "chrome/browser/profile.h"
+@@ -1145,6 +1146,7 @@
+ #endif
+ 
+   command_updater_.UpdateCommandEnabled(IDC_OPTIONS, show_main_ui);
++  command_updater_.UpdateCommandEnabled(IDC_REQUESTS, show_main_ui);
+   command_updater_.UpdateCommandEnabled(IDC_EDIT_SEARCH_ENGINES, show_main_ui);
+   command_updater_.UpdateCommandEnabled(IDC_VIEW_PASSWORDS, show_main_ui);
+   command_updater_.UpdateCommandEnabled(IDC_ABOUT, show_main_ui);
+@@ -1873,6 +1875,11 @@
+   }
+ }
+ 
++void Browser::OpenRequestsDialog() {
++  UserMetrics::RecordAction(UserMetricsAction("ShowRequests"), profile_);
++  ShowRequestsWindow(REQUESTS_PAGE_DEFAULT, profile_);
++}
++
+ void Browser::OpenKeywordEditor() {
+   UserMetrics::RecordAction(UserMetricsAction("EditSearchEngines"), profile_);
+   if (CommandLine::ForCurrentProcess()->HasSwitch(
+@@ -2245,6 +2252,7 @@
+     case IDC_REMOTING_SETUP:        OpenRemotingSetupDialog();        break;
+ #endif
+     case IDC_OPTIONS:               OpenOptionsDialog();              break;
++    case IDC_REQUESTS:              OpenRequestsDialog();             break;
+     case IDC_EDIT_SEARCH_ENGINES:   OpenKeywordEditor();              break;
+     case IDC_VIEW_PASSWORDS:        OpenPasswordManager();            break;
+     case IDC_CLEAR_BROWSING_DATA:   OpenClearBrowsingDataDialog();    break;
+Index: chrome/browser/browser.h
+===================================================================
+--- chrome/browser/browser.h	(revision 60173)
++++ chrome/browser/browser.h	(working copy)
+@@ -530,6 +530,7 @@
+   void ShowOptionsTab(const std::string& sub_page);
+   void OpenClearBrowsingDataDialog();
+   void OpenOptionsDialog();
++  void OpenRequestsDialog();
+   void OpenKeywordEditor();
+   void OpenPasswordManager();
+   void OpenSyncMyBookmarksDialog();
+Index: chrome/browser/requests_table_model.cc
+===================================================================
+--- chrome/browser/requests_table_model.cc	(revision 0)
++++ chrome/browser/requests_table_model.cc	(revision 0)
+@@ -0,0 +1,105 @@
++// Copyright (c) 2010 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/requests_table_model.h"
++
++#include "app/l10n_util.h"
++#include "app/resource_bundle.h"
++#include "app/table_model_observer.h"
++#include "base/i18n/rtl.h"
++#include "base/utf_string_conversions.h"
++#include "chrome/browser/browser.h"
++#include "chrome/browser/browser_list.h"
++#include "chrome/browser/prefs/pref_service.h"
++#include "chrome/browser/profile.h"
++#include "chrome/browser/tab_contents/tab_contents.h"
++#include "chrome/common/pref_names.h"
++#include "chrome/common/url_constants.h"
++#include "gfx/codec/png_codec.h"
++#include "googleurl/src/gurl.h"
++#include "grit/app_resources.h"
++#include "grit/generated_resources.h"
++#include "net/base/net_util.h"
++#include "third_party/skia/include/core/SkBitmap.h"
++
++struct RequestsTableModel::Entry {
++  Entry() {}
++
++  std::wstring method, url;
++};
++
++RequestsTableModel::RequestsTableModel()
++    : observer_(NULL) {
++
++}
++
++RequestsTableModel::~RequestsTableModel() {
++}
++
++int RequestsTableModel::RowCount() {
++  return static_cast<int>(entries_.size());
++}
++
++std::wstring RequestsTableModel::GetText(int row, int column_id) {
++  DCHECK(row >= 0 && row < RowCount());
++  DCHECK(column_id == IDS_REQ_ID_COLUMN || column_id == IDS_REQ_METHOD_COLUMN || column_id == IDS_REQ_URL_COLUMN);
++
++  if (column_id == IDS_REQ_METHOD_COLUMN) {
++    return entries_[row].method;
++  } else if (column_id == IDS_REQ_ID_COLUMN) {
++    char *c = new char[10];
++    sprintf(c, "%09d", row);
++    std::wstring ret = UTF8ToWide(std::string(c));
++    delete c;
++    return ret;
++  } else {
++    return entries_[row].url;
++  }
++}
++
++SkBitmap RequestsTableModel::GetIcon(int row) {
++  DCHECK(row >= 0 && row < RowCount());
++  return SkBitmap();
++}
++
++std::wstring RequestsTableModel::GetTooltip(int row) {
++  return entries_[row].url;
++}
++
++void RequestsTableModel::SetObserver(TableModelObserver* observer) {
++  observer_ = observer;
++  if (observer_)
++    observer_->OnModelChanged();
++}
++/*
++std::wstring RequestsTableModel::FormattedURL(int row) const {
++  std::string languages =
++      profile_->GetPrefs()->GetString(prefs::kAcceptLanguages);
++  string16 url = net::FormatUrl(entries_[row].url, languages);
++  url = base::i18n::GetDisplayStringInLTRDirectionality(url);
++  return UTF16ToWide(url);
++}
++*/
++
++void RequestsTableModel::Add(const std::string* entry) {
++  entries_.push_back(Entry());
++  size_t n = entry->find(' ');
++  DCHECK(n != entry->npos);
++
++  std::string method = entry->substr(0, n);
++  std::string url = entry->substr(n + 1, entry->size() - n - 1);
++  entries_[entries_.size() - 1].method = UTF8ToWide(method);
++  entries_[entries_.size() - 1].url = UTF8ToWide(url);
++
++  if (observer_)
++    observer_->OnItemsAdded(entries_.size() - 1, 1);
++}
++
++std::string RequestsTableModel::Get(int index) {
++  DCHECK(index >= 0 && index < RowCount());
++  std::string text = WideToUTF8(entries_[index].method);
++  text += " ";
++  text += WideToUTF8(entries_[index].url);
++  return text;
++}
+\ No newline at end of file
+Index: chrome/browser/requests_table_model.h
+===================================================================
+--- chrome/browser/requests_table_model.h	(revision 0)
++++ chrome/browser/requests_table_model.h	(revision 0)
+@@ -0,0 +1,54 @@
++// Copyright (c) 2010 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_REQUESTS_TABLE_MODEL_H_
++#define CHROME_BROWSER_REQUESTS_TABLE_MODEL_H_
++#pragma once
++
++#include <string>
++#include <vector>
++
++#include "app/table_model.h"
++#include "chrome/browser/history/history.h"
++#include "chrome/browser/favicon_service.h"
++
++class GURL;
++class Profile;
++class SkBitmap;
++class TableModelObserver;
++
++// RequestsTableModel is the model for the TableView showing the list
++// of pages the user wants opened on startup.
++
++class RequestsTableModel : public TableModel {
++ public:
++  explicit RequestsTableModel();
++  virtual ~RequestsTableModel();
++
++  // TableModel overrides:
++  virtual int RowCount();
++  virtual std::wstring GetText(int row, int column_id);
++  virtual SkBitmap GetIcon(int row);
++  virtual std::wstring GetTooltip(int row);
++  virtual void SetObserver(TableModelObserver* observer);
++
++  // Adds an entry
++  void Add(const std::string* entry);
++  // Gets description for item at given index
++  std::string Get(int index);
++
++ private:
++  // Each item in the model is represented as an Entry. Entry stores the URL,
++  // title, and favicon of the page.
++  struct Entry;
++
++  // Set of entries we're showing.
++  std::vector<Entry> entries_;
++
++  TableModelObserver* observer_;
++
++  DISALLOW_COPY_AND_ASSIGN(RequestsTableModel);
++};
++
++#endif  // CHROME_BROWSER_REQUESTS_TABLE_MODEL_H_
+Index: chrome/browser/requests_window.h
+===================================================================
+--- chrome/browser/requests_window.h	(revision 0)
++++ chrome/browser/requests_window.h	(revision 0)
+@@ -0,0 +1,78 @@
++// Copyright (c) 2006-2008 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_REQUESTS_WINDOW_H__
++#define CHROME_BROWSER_REQUESTS_WINDOW_H__
++#pragma once
++
++class Profile;
++
++// An identifier for a Requests Tab page. These are treated as indices into
++// the list of available tabs to be displayed. PAGE_DEFAULT means select the
++// last tab viewed when the Options window was opened, or PAGE_GENERAL if the
++// Options was never opened.
++enum RequestsPage {
++  REQUESTS_PAGE_DEFAULT = -1,
++  REQUESTS_PAGE_GENERAL,
++  REQUESTS_PAGE_COUNT
++};
++
++// Show the Requests window selecting the specified page. If an Requests window
++// is currently open, this just activates it instead of opening a new one.
++void ShowRequestsWindow(RequestsPage page,
++                       Profile* profile);
++
++#endif  // CHROME_BROWSER_REQUESTS_WINDOW_H_
++// Copyright (c) 2006-2008 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_REQUESTS_WINDOW_H__
++#define CHROME_BROWSER_REQUESTS_WINDOW_H__
++#pragma once
++
++class Profile;
++
++// An identifier for a Requests Tab page. These are treated as indices into
++// the list of available tabs to be displayed. PAGE_DEFAULT means select the
++// last tab viewed when the Options window was opened, or PAGE_GENERAL if the
++// Options was never opened.
++enum RequestsPage {
++  REQUESTS_PAGE_DEFAULT = -1,
++  REQUESTS_PAGE_GENERAL,
++  REQUESTS_PAGE_COUNT
++};
++
++// Show the Requests window selecting the specified page. If an Requests window
++// is currently open, this just activates it instead of opening a new one.
++void ShowRequestsWindow(RequestsPage page,
++                       Profile* profile);
++
++#endif  // CHROME_BROWSER_REQUESTS_WINDOW_H_
++// Copyright (c) 2006-2008 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_REQUESTS_WINDOW_H__
++#define CHROME_BROWSER_REQUESTS_WINDOW_H__
++#pragma once
++
++class Profile;
++
++// An identifier for a Requests Tab page. These are treated as indices into
++// the list of available tabs to be displayed. PAGE_DEFAULT means select the
++// last tab viewed when the Options window was opened, or PAGE_GENERAL if the
++// Options was never opened.
++enum RequestsPage {
++  REQUESTS_PAGE_DEFAULT = -1,
++  REQUESTS_PAGE_GENERAL,
++  REQUESTS_PAGE_COUNT
++};
++
++// Show the Requests window selecting the specified page. If an Requests window
++// is currently open, this just activates it instead of opening a new one.
++void ShowRequestsWindow(RequestsPage page,
++                       Profile* profile);
++
++#endif  // CHROME_BROWSER_REQUESTS_WINDOW_H_
+Index: chrome/browser/views/requests/default_page_view.cc
+===================================================================
+--- chrome/browser/views/requests/default_page_view.cc	(revision 0)
++++ chrome/browser/views/requests/default_page_view.cc	(revision 0)
+@@ -0,0 +1,233 @@
++// Copyright (c) 2010 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/views/requests/default_page_view.h"
++#include "app/clipboard/clipboard.h"
++#include "app/clipboard/scoped_clipboard_writer.h"
++#include "app/combobox_model.h"
++#include "app/l10n_util.h"
++#include "base/callback.h"
++#include "base/message_loop.h"
++#include "base/string16.h"
++#include "base/string_util.h"
++#include "base/utf_string_conversions.h"
++#include "chrome/browser/custom_home_pages_table_model.h"
++#include "chrome/browser/dom_ui/new_tab_ui.h"
++#include "chrome/browser/net/url_fixer_upper.h"
++#include "chrome/browser/prefs/pref_service.h"
++#include "chrome/browser/profile.h"
++#include "chrome/browser/prefs/session_startup_pref.h"
++#include "chrome/browser/search_engines/template_url.h"
++#include "chrome/browser/search_engines/template_url_model.h"
++#include "chrome/browser/search_engines/template_url_model_observer.h"
++#include "chrome/browser/views/keyword_editor_view.h"
++#include "chrome/common/notification_service.h"
++
++#include "chrome/browser/requests_table_model.h"
++
++#include "chrome/common/chrome_constants.h"
++#include "chrome/common/pref_names.h"
++#include "chrome/common/url_constants.h"
++#include "chrome/installer/util/browser_distribution.h"
++#include "grit/chromium_strings.h"
++#include "grit/generated_resources.h"
++#include "views/controls/button/radio_button.h"
++#include "views/controls/label.h"
++#include "views/controls/table/table_view.h"
++#include "views/controls/textfield/textfield.h"
++#include "views/grid_layout.h"
++#include "views/standard_layout.h"
++
++namespace {
++const int kTableWidth = 300;
++const int kStartupRadioGroup = 101;
++// All the requests pages are in the same view hierarchy. This means we need to
++// make sure group identifiers don't collide across different pages.
++const SkColor kDefaultBrowserLabelColor = SkColorSetRGB(0, 135, 0);
++const SkColor kNotDefaultBrowserLabelColor = SkColorSetRGB(135, 0, 0);
++
++}  // namespace
++
++///////////////////////////////////////////////////////////////////////////////
++// DefaultPageView, public:
++
++DefaultPageView::DefaultPageView(Profile* profile)
++    : requests_table_(NULL),
++      ALLOW_THIS_IN_INITIALIZER_LIST(
++          default_browser_worker_(
++              new ShellIntegration::DefaultBrowserWorker(this))),
++      RequestsPageView(profile) {
++}
++
++DefaultPageView::~DefaultPageView() {
++  if (requests_table_)
++    requests_table_->SetModel(NULL);
++  default_browser_worker_->ObserverDestroyed();
++}
++
++///////////////////////////////////////////////////////////////////////////////
++// DefaultPageView, views::ButtonListener implementation:
++
++void DefaultPageView::ButtonPressed(
++    views::Button* sender, const views::Event& event) {
++  return;
++}
++
++///////////////////////////////////////////////////////////////////////////////
++// DefaultPageView, views::Combobox::Listener implementation:
++
++void DefaultPageView::ItemChanged(views::Combobox* combobox,
++                                  int prev_index, int new_index) {
++  return;
++}
++
++///////////////////////////////////////////////////////////////////////////////
++// DefaultPageView, views::Textfield::Controller implementation:
++
++void DefaultPageView::ContentsChanged(views::Textfield* sender,
++                                      const std::wstring& new_contents) {
++  return;
++}
++
++bool DefaultPageView::HandleKeystroke(views::Textfield* sender,
++                                      const views::Textfield::Keystroke&) {
++  return false;
++}
++
++///////////////////////////////////////////////////////////////////////////////
++// DefaultPageView, RequestsPageView implementation:
++
++void DefaultPageView::InitControlLayout() {
++  using views::GridLayout;
++  using views::ColumnSet;
++
++  requests_table_model_.reset(
++      new RequestsTableModel());
++
++  TableColumn col1(IDS_REQ_ID_COLUMN, TableColumn::LEFT, -1,
++                          11);
++  col1.sortable = true;
++  TableColumn col2(IDS_REQ_METHOD_COLUMN, TableColumn::LEFT, -1,
++                          9);
++  col2.sortable = true;
++  TableColumn col3(IDS_REQ_URL_COLUMN, TableColumn::LEFT, -1,
++                          80);
++  col3.sortable = true;
++  std::vector<TableColumn> cols;
++  cols.push_back(col1);
++  cols.push_back(col2);
++  cols.push_back(col3);
++
++  requests_table_ = new views::TableView(requests_table_model_.get(), cols,
++    views::TEXT_ONLY, false, true, true);
++  requests_table_->SetObserver(this);
++
++  // Yummy layout code.
++  GridLayout* layout = CreatePanelGridLayout(this);
++  SetLayoutManager(layout);
++
++  const int labels_column_set_id = 0;
++  const int single_column_view_set_id = 1;
++/*
++  ColumnSet* column_set = layout->AddColumnSet(labels_column_set_id);
++  column_set->AddColumn(GridLayout::LEADING, GridLayout::CENTER, 0,
++                        GridLayout::USE_PREF, 0, 0);
++  column_set->AddPaddingColumn(0, kRelatedControlHorizontalSpacing);
++  column_set->AddColumn(GridLayout::FILL, GridLayout::CENTER, 1,
++                        GridLayout::USE_PREF, 0, 0);
++*/
++  ColumnSet* column_set = layout->AddColumnSet(single_column_view_set_id);
++  column_set->AddColumn(GridLayout::FILL, GridLayout::FILL, 1,
++                        GridLayout::FIXED, kTableWidth, 0);
++/*
++  layout->StartRow(0, labels_column_set_id);
++  views::Label* url_label = new views::Label();
++  url_label->SetHorizontalAlignment(views::Label::ALIGN_LEFT);
++  url_label->SetText(l10n_util::GetString(IDS_ASI_URL));
++  layout->AddView(url_label);
++
++  url_field_ = new views::Textfield();
++  url_field_->SetController(this);
++  layout->AddView(url_field_);
++
++  layout->AddPaddingRow(0, kUnrelatedControlVerticalSpacing);
++*/
++  layout->StartRow(0, single_column_view_set_id);
++  /*
++  views::Label* description_label = new views::Label();
++  description_label->SetHorizontalAlignment(views::Label::ALIGN_LEFT);
++  description_label->SetText(l10n_util::GetString(IDS_ASI_DESCRIPTION));
++  description_label->SetFont(
++      description_label->font().DeriveFont(0, gfx::Font::BOLD));
++  layout->AddView(description_label);
++
++  layout->AddPaddingRow(0, kRelatedControlVerticalSpacing);
++*/
++  layout->StartRow(1, single_column_view_set_id);
++  layout->AddView(requests_table_);
++
++  layout->AddPaddingRow(0, kRelatedControlVerticalSpacing);
++}
++
++void DefaultPageView::OnSelectionChanged() {
++  std::string text;
++  for (views::TableView::iterator it = requests_table_->SelectionBegin(); it != requests_table_->SelectionEnd(); ++it) {
++    text = requests_table_model_->Get(*it) + "\r\n" + text;
++  }
++
++  // copy selection to clipboard
++  Clipboard clipboard;
++
++  {
++    ScopedClipboardWriter clipboard_writer(&clipboard);
++    clipboard_writer.WriteText(UTF8ToWide(text));
++  }
++}
++
++///////////////////////////////////////////////////////////////////////////////
++// DefaultPageView, private:
++
++void DefaultPageView::SetDefaultBrowserUIState(
++    ShellIntegration::DefaultBrowserUIState state) {
++		/*
++  bool button_enabled = state == ShellIntegration::STATE_NOT_DEFAULT;
++  default_browser_use_as_default_button_->SetEnabled(button_enabled);
++  default_browser_use_as_default_button_->SetNeedElevation(true);
++  if (state == ShellIntegration::STATE_IS_DEFAULT) {
++    default_browser_status_label_->SetText(
++      l10n_util::GetStringF(IDS_REQUESTS_DEFAULTBROWSER_DEFAULT,
++                            l10n_util::GetString(IDS_PRODUCT_NAME)));
++    default_browser_status_label_->SetColor(kDefaultBrowserLabelColor);
++    Layout();
++  } else if (state == ShellIntegration::STATE_NOT_DEFAULT) {
++    default_browser_status_label_->SetText(
++        l10n_util::GetStringF(IDS_REQUESTS_DEFAULTBROWSER_NOTDEFAULT,
++                              l10n_util::GetString(IDS_PRODUCT_NAME)));
++    default_browser_status_label_->SetColor(kNotDefaultBrowserLabelColor);
++    Layout();
++  } else if (state == ShellIntegration::STATE_UNKNOWN) {
++    default_browser_status_label_->SetText(
++        l10n_util::GetStringF(IDS_REQUESTS_DEFAULTBROWSER_UNKNOWN,
++                              l10n_util::GetString(IDS_PRODUCT_NAME)));
++    default_browser_status_label_->SetColor(kNotDefaultBrowserLabelColor);
++    Layout();
++  }
++*/
++  Layout();
++}
++
++void DefaultPageView::SetDefaultBrowserUIStateForSxS() {
++/*
++  default_browser_use_as_default_button_->SetEnabled(false);
++  default_browser_status_label_->SetText(
++    l10n_util::GetStringF(IDS_REQUESTS_DEFAULTBROWSER_SXS,
++                          l10n_util::GetString(IDS_PRODUCT_NAME)));
++  default_browser_status_label_->SetColor(kNotDefaultBrowserLabelColor);
++*/
++  Layout();
++}
++
++void DefaultPageView::NotifyRequest(const std::string* details) {
++	requests_table_model_->Add(details);
++}
+\ No newline at end of file
+Index: chrome/browser/views/requests/default_page_view.h
+===================================================================
+--- chrome/browser/views/requests/default_page_view.h	(revision 0)
++++ chrome/browser/views/requests/default_page_view.h	(revision 0)
+@@ -0,0 +1,84 @@
++// Copyright (c) 2010 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_VIEWS_REQUESTS_DEFAULT_PAGE_VIEW_H_
++#define CHROME_BROWSER_VIEWS_REQUESTS_DEFAULT_PAGE_VIEW_H_
++#pragma once
++
++#include "chrome/browser/shell_integration.h"
++#include "chrome/browser/views/requests/requests_page_view.h"
++#include "chrome/browser/views/url_picker.h"
++#include "views/controls/combobox/combobox.h"
++#include "views/controls/button/button.h"
++#include "views/controls/table/table_view_observer.h"
++#include "views/view.h"
++
++namespace views {
++class Checkbox;
++class GroupboxView;
++class Label;
++class NativeButton;
++class RadioButton;
++class TableView;
++class Textfield;
++}
++class RequestsTableModel;
++class TableModel;
++
++///////////////////////////////////////////////////////////////////////////////
++// DefaultPageView
++
++class DefaultPageView : public RequestsPageView,
++                        public views::Combobox::Listener,
++                        public views::ButtonListener,
++                        public views::Textfield::Controller,
++                        public views::TableViewObserver,
++                        public ShellIntegration::DefaultBrowserObserver {
++ public:
++  explicit DefaultPageView(Profile* profile);
++  virtual ~DefaultPageView();
++
++ protected:
++  // views::ButtonListener implementation:
++  virtual void ButtonPressed(views::Button* sender, const views::Event& event);
++
++  // views::Combobox::Listener implementation:
++  virtual void ItemChanged(views::Combobox* combobox,
++                           int prev_index,
++                           int new_index);
++
++  // views::Textfield::Controller implementation:
++  virtual void ContentsChanged(views::Textfield* sender,
++                               const std::wstring& new_contents);
++  virtual bool HandleKeystroke(views::Textfield* sender,
++                               const views::Textfield::Keystroke& key);
++
++  // RequestsPageView implementation:
++  virtual void InitControlLayout();
++
++  virtual void NotifyRequest(const std::string* details);
++
++ private:
++  virtual void OnSelectionChanged();
++
++  // ShellIntegration::DefaultBrowserObserver implementation:
++  // Updates the UI state to reflect the current default browser state.
++  virtual void SetDefaultBrowserUIState(
++      ShellIntegration::DefaultBrowserUIState state);
++
++  // For Side by Side installs, this will disable the Default Browser setting
++  // and display an explanitory message.
++  void SetDefaultBrowserUIStateForSxS();
++
++  // Controls for the Default group
++  views::TableView* requests_table_;
++  scoped_ptr<RequestsTableModel> requests_table_model_;
++
++  // The helper object that performs default browser set/check tasks.
++  scoped_refptr<ShellIntegration::DefaultBrowserWorker> default_browser_worker_;
++
++  DISALLOW_COPY_AND_ASSIGN(DefaultPageView);
++};
++
++#endif  // CHROME_BROWSER_VIEWS_REQUESTS_DEFAULT_PAGE_VIEW_H_
+Index: chrome/browser/views/requests/requests_page_view.cc
+===================================================================
+--- chrome/browser/views/requests/requests_page_view.cc	(revision 0)
++++ chrome/browser/views/requests/requests_page_view.cc	(revision 0)
+@@ -0,0 +1,59 @@
++// Copyright (c) 2010 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/views/requests/requests_page_view.h"
++
++#include "chrome/browser/browser_process.h"
++#include "chrome/browser/metrics/user_metrics.h"
++#include "chrome/browser/prefs/pref_service.h"
++#include "chrome/common/notification_service.h"
++#include "views/widget/widget.h"
++
++///////////////////////////////////////////////////////////////////////////////
++// RequestsPageView
++
++RequestsPageView::RequestsPageView(Profile* profile)
++    : profile_(profile),
++      initialized_(false) {
++  registrar_.Add(this, NotificationType::REQUEST_NOTIFICATION,
++                     NotificationService::AllSources());
++}
++
++RequestsPageView::~RequestsPageView() {
++}
++
++///////////////////////////////////////////////////////////////////////////////
++// RequestsPageView, views::View overrides:
++
++void RequestsPageView::ViewHierarchyChanged(bool is_add,
++                                           views::View* parent,
++                                           views::View* child) {
++  if (!initialized_ && is_add && GetWidget()) {
++    // It is important that this only get done _once_ otherwise we end up
++    // duplicating the view hierarchy when tabs are switched.
++    initialized_ = true;
++    InitControlLayout();
++  }
++}
++
++bool RequestsPageView::GetAccessibleRole(AccessibilityTypes::Role* role) {
++  *role = AccessibilityTypes::ROLE_PAGETAB;
++  return true;
++}
++
++///////////////////////////////////////////////////////////////////////////////
++// RequestsPageView, NotificationObserver implementation:
++
++void RequestsPageView::Observe(NotificationType type,
++                              const NotificationSource& source,
++                              const NotificationDetails& details) {
++  NotifyRequest(Details<std::string>(details).ptr());
++}
++
++void RequestsPageView::UserMetricsRecordAction(const UserMetricsAction& action,
++                                              PrefService* prefs) {
++  UserMetrics::RecordAction(action, profile());
++  if (prefs)
++    prefs->ScheduleSavePersistentPrefs();
++}
+Index: chrome/browser/views/requests/requests_page_view.h
+===================================================================
+--- chrome/browser/views/requests/requests_page_view.h	(revision 0)
++++ chrome/browser/views/requests/requests_page_view.h	(revision 0)
+@@ -0,0 +1,81 @@
++// Copyright (c) 2010 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_VIEWS_REQUESTS_REQUESTS_PAGE_VIEW_H__
++#define CHROME_BROWSER_VIEWS_REQUESTS_REQUESTS_PAGE_VIEW_H__
++#pragma once
++
++#include "views/controls/link.h"
++#include "views/controls/button/native_button.h"
++
++#include <string>
++
++#include "base/basictypes.h"
++#include "chrome/browser/requests_window.h"
++#include "chrome/common/notification_observer.h"
++#include "chrome/browser/metrics/user_metrics.h"
++#include "chrome/common/notification_registrar.h"
++
++class PrefService;
++class Profile;
++struct UserMetricsAction;
++
++///////////////////////////////////////////////////////////////////////////////
++// RequestsPageView
++//
++//  A base class for Requests dialog pages that handles ensuring control
++//  initialization is done just once.
++//
++class RequestsPageView : public views::View,
++                        public NotificationObserver {
++ public:
++  virtual ~RequestsPageView();
++
++  // Returns true if the window containing this view can be closed, given the
++  // current state of this view. This can be used to prevent the window from
++  // being closed when a modal dialog box is showing, for example.
++  virtual bool CanClose() const { return true; }
++
++ protected:
++  // This class cannot be instantiated directly, but its constructor must be
++  // called by derived classes.
++  explicit RequestsPageView(Profile* profile);
++
++  // Initializes the layout of the controls within the panel.
++  virtual void InitControlLayout() = 0;
++
++  // views::View overrides:
++  virtual void ViewHierarchyChanged(bool is_add,
++                                    views::View* parent,
++                                    views::View* child);
++
++  virtual bool GetAccessibleRole(AccessibilityTypes::Role* role);
++
++  // Overridden from NotificationObserver:
++  virtual void Observe(NotificationType type,
++                       const NotificationSource& source,
++                       const NotificationDetails& details);
++
++  // Returns the Profile associated with this page.
++  Profile* profile() const { return profile_; }
++
++  // Records a user action and schedules the prefs file to be saved.
++  void UserMetricsRecordAction(const UserMetricsAction &action,
++                               PrefService* prefs);
++
++  virtual void NotifyRequest(const std::string* details) {}
++
++ private:
++  NotificationRegistrar registrar_;
++
++  // The Profile associated with this page.
++  Profile* profile_;
++
++  // Whether or not the control layout has been initialized for this page.
++  bool initialized_;
++
++  DISALLOW_COPY_AND_ASSIGN(RequestsPageView);
++};
++
++#endif  // CHROME_BROWSER_VIEWS_REQUESTS_REQUESTS_PAGE_VIEW_H__
+Index: chrome/browser/views/requests/requests_window_view.cc
+===================================================================
+--- chrome/browser/views/requests/requests_window_view.cc	(revision 0)
++++ chrome/browser/views/requests/requests_window_view.cc	(revision 0)
+@@ -0,0 +1,236 @@
++// Copyright (c) 2010 The Chromium Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/requests_window.h"
++
++#include "app/l10n_util.h"
++#include "base/utf_string_conversions.h"
++#include "chrome/browser/browser_list.h"
++#include "chrome/browser/browser_process.h"
++#include "chrome/browser/browser_window.h"
++#include "chrome/browser/prefs/pref_service.h"
++#include "chrome/browser/profile.h"
++
++#include "chrome/browser/views/requests/default_page_view.h"
++
++#include "chrome/browser/window_sizer.h"
++#include "chrome/common/chrome_constants.h"
++#include "chrome/common/pref_names.h"
++#include "grit/chromium_strings.h"
++#include "grit/generated_resources.h"
++#include "grit/locale_settings.h"
++#include "views/controls/tabbed_pane/tabbed_pane.h"
++#include "views/widget/root_view.h"
++#include "views/window/dialog_delegate.h"
++#include "views/window/window.h"
++
++///////////////////////////////////////////////////////////////////////////////
++// RequestsWindowView
++//
++//  The contents of the Requests dialog window.
++//
++class RequestsWindowView : public views::View,
++                          public views::DialogDelegate,
++                          public views::TabbedPane::Listener {
++ public:
++  explicit RequestsWindowView(Profile* profile);
++  virtual ~RequestsWindowView();
++
++  // Shows the Tab corresponding to the specified RequestsPage.
++  void ShowRequestsPage(RequestsPage page);
++
++  // views::DialogDelegate implementation:
++  virtual int GetDialogButtons() const {
++    return MessageBoxFlags::DIALOGBUTTON_CANCEL;
++  }
++  virtual std::wstring GetWindowTitle() const;
++  virtual std::wstring GetWindowName() const;
++  virtual void WindowClosing();
++  virtual bool Cancel();
++  virtual views::View* GetContentsView();
++
++  // views::TabbedPane::Listener implementation:
++  virtual void TabSelectedAt(int index);
++
++  // views::View overrides:
++  virtual bool GetAccessibleRole(AccessibilityTypes::Role* role);
++  virtual void Layout();
++  virtual gfx::Size GetPreferredSize();
++
++ protected:
++  // views::View overrides:
++  virtual void ViewHierarchyChanged(bool is_add,
++                                    views::View* parent,
++                                    views::View* child);
++ private:
++  // Init the assorted Tabbed pages
++  void Init();
++
++  // Returns the currently selected RequestsPageView.
++  RequestsPageView* GetCurrentRequestsPageView() const;
++
++  // The Tab view that contains all of the requests pages.
++  views::TabbedPane* tabs_;
++
++  // The Profile associated with these requests.
++  Profile* profile_;
++
++  DefaultPageView* general_page;
++
++  // The last page the user was on when they opened the Requests window.
++  //IntegerPrefMember last_selected_page_;
++
++  DISALLOW_COPY_AND_ASSIGN(RequestsWindowView);
++};
++
++// static
++static RequestsWindowView* instance_ = NULL;
++static const int kDialogPadding = 7;
++
++///////////////////////////////////////////////////////////////////////////////
++// RequestsWindowView, public:
++
++RequestsWindowView::RequestsWindowView(Profile* profile)
++      // Always show preferences for the original profile. Most state when off
++      // the record comes from the original profile, but we explicitly use
++      // the original profile to avoid potential problems.
++    : profile_(profile->GetOriginalProfile()) {
++  // We don't need to observe changes in this value.
++  //last_selected_page_.Init(prefs::kRequestsWindowLastTabIndex,
++  //                         g_browser_process->local_state(), NULL);
++}
++
++RequestsWindowView::~RequestsWindowView() {
++}
++
++void RequestsWindowView::ShowRequestsPage(RequestsPage page) {
++  // Positioning is handled by window_delegate. we just need to show the window.
++  // This will show invisible windows and bring visible windows to the front.
++  window()->Show();
++
++  if (page == REQUESTS_PAGE_DEFAULT) {
++    // Remember the last visited page from local state.
++    //page = static_cast<RequestsPage>(last_selected_page_.GetValue());
++    //if (page == REQUESTS_PAGE_DEFAULT)
++      page = REQUESTS_PAGE_GENERAL;
++  }
++  // If the page number is out of bounds, reset to the first tab.
++  if (page < 0 || page >= tabs_->GetTabCount())
++    page = REQUESTS_PAGE_GENERAL;
++
++  tabs_->SelectTabAt(static_cast<int>(page));
++}
++
++///////////////////////////////////////////////////////////////////////////////
++// RequestsWindowView, views::DialogDelegate implementation:
++
++std::wstring RequestsWindowView::GetWindowTitle() const {
++  return l10n_util::GetStringF(IDS_REQUESTS_DIALOG_TITLE,
++                               l10n_util::GetString(IDS_PRODUCT_NAME));
++}
++
++std::wstring RequestsWindowView::GetWindowName() const {
++  return UTF8ToWide(prefs::kPreferencesWindowPlacement);
++}
++
++void RequestsWindowView::WindowClosing() {
++  // Clear the static instance so that the next time ShowRequestsWindow() is
++  // called a new window is opened.
++  instance_ = NULL;
++}
++
++bool RequestsWindowView::Cancel() {
++  return GetCurrentRequestsPageView()->CanClose();
++}
++
++views::View* RequestsWindowView::GetContentsView() {
++  return this;
++}
++
++///////////////////////////////////////////////////////////////////////////////
++// RequestsWindowView, views::TabbedPane::Listener implementation:
++
++void RequestsWindowView::TabSelectedAt(int index) {
++  DCHECK(index > REQUESTS_PAGE_DEFAULT && index < REQUESTS_PAGE_COUNT);
++  //last_selected_page_.SetValue(index);
++}
++
++///////////////////////////////////////////////////////////////////////////////
++// RequestsWindowView, views::View overrides:
++
++bool RequestsWindowView::GetAccessibleRole(AccessibilityTypes::Role* role) {
++  *role = AccessibilityTypes::ROLE_CLIENT;
++  return true;
++}
++
++void RequestsWindowView::Layout() {
++  tabs_->SetBounds(kDialogPadding, kDialogPadding,
++                   width() - (2 * kDialogPadding),
++                   height() - (2 * kDialogPadding));
++}
++
++gfx::Size RequestsWindowView::GetPreferredSize() {
++  gfx::Size size(tabs_->GetPreferredSize());
++  size.Enlarge(2 * kDialogPadding, 2 * kDialogPadding);
++  return size;
++}
++
++void RequestsWindowView::ViewHierarchyChanged(bool is_add,
++                                             views::View* parent,
++                                             views::View* child) {
++  // Can't init before we're inserted into a Container, because we require a
++  // HWND to parent native child controls to.
++  if (is_add && child == this)
++    Init();
++}
++
++///////////////////////////////////////////////////////////////////////////////
++// RequestsWindowView, private:
++
++void RequestsWindowView::Init() {
++  tabs_ = new views::TabbedPane;
++  tabs_->SetAccessibleName(l10n_util::GetStringF(IDS_REQUESTS_DIALOG_TITLE,
++                           l10n_util::GetString(IDS_PRODUCT_NAME)));
++  tabs_->SetListener(this);
++  AddChildView(tabs_);
++
++  int tab_index = 0;
++  general_page = new DefaultPageView(profile_);
++  tabs_->AddTabAtIndex(tab_index++,
++                       l10n_util::GetString(IDS_REQUESTS_GENERAL_TAB_LABEL),
++                       general_page, false);
++/*
++  ContentPageView* content_page = new ContentPageView(profile_);
++  tabs_->AddTabAtIndex(tab_index++,
++                       l10n_util::GetString(IDS_REQUESTS_CONTENT_TAB_LABEL),
++                       content_page, false);
++
++  AdvancedPageView* advanced_page = new AdvancedPageView(profile_);
++  tabs_->AddTabAtIndex(tab_index++,
++                       l10n_util::GetString(IDS_REQUESTS_ADVANCED_TAB_LABEL),
++                       advanced_page, false);
++*/
++  DCHECK(tabs_->GetTabCount() == REQUESTS_PAGE_COUNT);
++}
++
++RequestsPageView* RequestsWindowView::GetCurrentRequestsPageView() const {
++  return static_cast<RequestsPageView*>(tabs_->GetSelectedTab());
++}
++
++///////////////////////////////////////////////////////////////////////////////
++// Factory/finder method:
++
++void ShowRequestsWindow(RequestsPage page,
++                       Profile* profile) {
++  DCHECK(profile);
++  // If there's already an existing requests window, activate it and switch to
++  // the specified page.
++  // TODO(beng): note this is not multi-simultaneous-profile-safe. When we care
++  //             about this case this will have to be fixed.
++  if (!instance_) {
++    instance_ = new RequestsWindowView(profile);
++    views::Window::CreateChromeWindow(NULL, gfx::Rect(), instance_);
++  }
++  instance_->ShowRequestsPage(page);
++}
+Index: chrome/browser/wrench_menu_model.cc
+===================================================================
+--- chrome/browser/wrench_menu_model.cc	(revision 60173)
++++ chrome/browser/wrench_menu_model.cc	(working copy)
+@@ -373,6 +373,8 @@
+   AddItemWithStringId(IDC_SHOW_DOWNLOADS, IDS_SHOW_DOWNLOADS);
+   AddSeparator();
+ 
++  AddItemWithStringId(IDC_REQUESTS, IDS_REQUESTS);
++
+ #if defined(OS_MACOSX)
+   AddItemWithStringId(IDC_OPTIONS, IDS_PREFERENCES_MAC);
+ #elif defined(OS_LINUX)
+Index: chrome/chrome_browser.gypi
+===================================================================
+--- chrome/chrome_browser.gypi	(revision 60173)
++++ chrome/chrome_browser.gypi	(working copy)
+@@ -1153,6 +1153,8 @@
+         'browser/cross_site_request_manager.h',
+         'browser/custom_home_pages_table_model.cc',
+         'browser/custom_home_pages_table_model.h',
++        'browser/requests_table_model.cc',
++        'browser/requests_table_model.h',
+         'browser/default_encoding_combo_model.cc',
+         'browser/default_encoding_combo_model.h',
+         'browser/defaults.cc',
+@@ -2228,6 +2230,7 @@
+         'browser/plugin_service.h',
+         'browser/plugin_updater.cc',
+         'browser/plugin_updater.h',
++        'browser/requests_window.h',
+         'browser/policy/config_dir_policy_provider.cc',
+         'browser/policy/config_dir_policy_provider.h',
+         'browser/policy/configuration_policy_pref_store.cc',
+@@ -3018,6 +3021,11 @@
+         'browser/views/options/plugin_filter_page_view.h',
+         'browser/views/options/simple_content_exceptions_view.cc',
+         'browser/views/options/simple_content_exceptions_view.h',
++        'browser/views/requests/default_page_view.cc',
++        'browser/views/requests/default_page_view.h',
++        'browser/views/requests/requests_page_view.cc',
++        'browser/views/requests/requests_page_view.h',
++        'browser/views/requests/requests_window_view.cc',
+         'browser/views/page_info_bubble_view.cc',
+         'browser/views/page_info_bubble_view.h',
+         'browser/views/page_info_window_view.cc',
+Index: chrome/common/notification_type.h
+===================================================================
+--- chrome/common/notification_type.h	(revision 60173)
++++ chrome/common/notification_type.h	(working copy)
+@@ -1185,6 +1185,8 @@
+     // The detail of this notification is not used.
+     POLICY_CHANGED,
+ 
++    REQUEST_NOTIFICATION,
++
+     // Count (must be last) ----------------------------------------------------
+     // Used to determine the number of notification types.  Not valid as
+     // a type parameter when registering for or posting notifications.
+Index: net/url_request/url_request.cc
+===================================================================
+--- net/url_request/url_request.cc	(revision 60173)
++++ net/url_request/url_request.cc	(working copy)
+@@ -304,7 +304,9 @@
+ }
+ 
+ void URLRequest::Start() {
+-  StartJob(GetJobManager()->CreateJob(this));
++  URLRequestJob* job = GetJobManager()->CreateJob(this);
++  StartJob(job);
++  job->NotifyRequest();
+ }
+ 
+ ///////////////////////////////////////////////////////////////////////////////
+Index: net/url_request/url_request_job.cc
+===================================================================
+--- net/url_request/url_request_job.cc	(revision 60173)
++++ net/url_request/url_request_job.cc	(working copy)
+@@ -17,6 +17,9 @@
+ #include "net/url_request/url_request.h"
+ #include "net/url_request/url_request_job_metrics.h"
+ #include "net/url_request/url_request_job_tracker.h"
++#include "chrome/common/notification_service.h"
++#include "chrome/common/notification_type.h"
++#include "chrome/browser/chrome_thread.h"
+ 
+ using base::Time;
+ using base::TimeTicks;
+@@ -48,6 +51,11 @@
+     metrics_.reset(new URLRequestJobMetrics());
+     metrics_->start_time_ = TimeTicks::Now();
+   }
++
++  details_ = request_->method();
++  details_ += " ";
++  details_ += request_->url().spec();
++
+   g_url_request_job_tracker.AddNewJob(this);
+ }
+ 
+@@ -55,6 +63,18 @@
+   g_url_request_job_tracker.RemoveJob(this);
+ }
+ 
++void URLRequestJob::NotifyRequest() {
++  ChromeThread::PostTask(ChromeThread::UI, FROM_HERE, NewRunnableMethod(
++      this, &URLRequestJob::DoNotifyRequest));
++}
++
++void URLRequestJob::DoNotifyRequest() {
++  NotificationService::current()->Notify(
++      NotificationType::REQUEST_NOTIFICATION,
++      NotificationService::AllSources(),
++      Details<std::string>(&details_));
++}
++
+ void URLRequestJob::SetUpload(net::UploadData* upload) {
+ }
+ 
+Index: net/url_request/url_request_job.h
+===================================================================
+--- net/url_request/url_request_job.h	(revision 60173)
++++ net/url_request/url_request_job.h	(working copy)
+@@ -217,10 +217,14 @@
+   virtual int GetInputStreamBufferSize() const;
+   virtual void RecordPacketStats(StatisticSelector statistic) const;
+ 
++  virtual void NotifyRequest();
++
+  protected:
+   friend class base::RefCountedThreadSafe<URLRequestJob>;
+   virtual ~URLRequestJob();
+ 
++  void DoNotifyRequest();
++
+   // Notifies the job that headers have been received.
+   void NotifyHeadersComplete();
+ 
+@@ -305,6 +309,8 @@
+   bool is_compressed_;
+ 
+  private:
++  std::string details_;
++
+   // Size of filter input buffers used by this class.
+   static const int kFilterBufSize;
+ 

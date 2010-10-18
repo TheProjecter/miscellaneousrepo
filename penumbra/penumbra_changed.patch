@@ -1,0 +1,1070 @@
+diff --git a/ButtonHandler.cpp b/ButtonHandler.cpp
+index 6912925..74c78dd 100644
+--- a/ButtonHandler.cpp
++++ b/ButtonHandler.cpp
+@@ -34,6 +34,10 @@
+ 
+ #include "MainMenu.h"
+ 
++#include "Server.h"
++#include "Client.h"
++#include "Network.h"
++
+ struct cButtonHandlerAction
+ {
+ 	tString msName;
+@@ -74,6 +78,7 @@ static cButtonHandlerAction gvDefaultActions[] = {
+ {"Flashlight","Keyboard",eKey_f,true},
+ {"GlowStick","Keyboard",eKey_g,true},
+ 
++{"Backspace","Keyboard",eKey_BACKSPACE,false},
+ {"Escape","Keyboard",eKey_ESCAPE,false},
+ {"Enter","Keyboard",eKey_RETURN,false},
+ {"MouseClick","MouseButton",eMButton_Left,false},
+@@ -82,6 +87,7 @@ static cButtonHandlerAction gvDefaultActions[] = {
+ {"RightClick","MouseButton",eMButton_Right,false},
+ {"LeftClick","MouseButton",eMButton_Left,false},
+ 
++{"Zero","Keyboard",eKey_0,false},
+ {"One","Keyboard",eKey_1,false},
+ {"Two","Keyboard",eKey_2,false},
+ {"Three","Keyboard",eKey_3,false},
+@@ -91,7 +97,7 @@ static cButtonHandlerAction gvDefaultActions[] = {
+ {"Seven","Keyboard",eKey_7,false},
+ {"Eight","Keyboard",eKey_8,false},
+ {"Nine","Keyboard",eKey_9,false},
+-
++{"Period","Keyboard",eKey_PERIOD,false},
+ //Debug:
+ {"ResetGame","Keyboard",eKey_F1,false},
+ {"SaveGame","Keyboard",eKey_F4,false},
+@@ -291,6 +297,60 @@ void cButtonHandler::Update(float afTimeStep)
+ 			mpInit->mpMainMenu->Exit();
+ 		}
+ 
++        tWString sText;
++
++        if(mpInput->WasTriggerd("Backspace")) {
++            sText = _W(" ");
++        }
++
++        if(mpInput->WasTriggerd("One")) {
++            sText = _W("1");
++        }
++
++        if(mpInput->WasTriggerd("Two")) {
++            sText = _W("2");
++        }
++
++        if(mpInput->WasTriggerd("Three")) {
++            sText = _W("3");
++        }
++
++        if(mpInput->WasTriggerd("Four")) {
++            sText = _W("4");
++        }
++
++        if(mpInput->WasTriggerd("Five")) {
++            sText = _W("5");
++        }
++
++        if(mpInput->WasTriggerd("Six")) {
++            sText = _W("6");
++        }
++
++        if(mpInput->WasTriggerd("Seven")) {
++            sText = _W("7");
++        }
++
++        if(mpInput->WasTriggerd("Eight")) {
++            sText = _W("8");
++        }
++
++        if(mpInput->WasTriggerd("Nine")) {
++            sText = _W("9");
++        }
++
++        if(mpInput->WasTriggerd("Zero")) {
++            sText = _W("0");
++        }
++
++        if(mpInput->WasTriggerd("Period")) {
++            sText = _W(".");
++        }
++
++        if (sText.length() > 0) {
++            mpInit->mpMainMenu->OnKeyPress(sText);
++        }
++
+ 		if(	mpInput->BecameTriggerd("RightClick") ||
+ 			(mpInit->mbHasHaptics && mpInput->BecameTriggerd("MouseClickRight")) )
+ 		{
+@@ -567,6 +627,7 @@ void cButtonHandler::Update(float afTimeStep)
+ 		else 
+ 		{
+ 			bPlayerStateIsActive = true;
++            bool bChange = false;
+ 
+ 			if(mpInput->BecameTriggerd("Escape"))
+ 			{
+@@ -626,10 +687,12 @@ void cButtonHandler::Update(float afTimeStep)
+ 					// Player Movement ////////////////////
+ 					if(mpInput->IsTriggerd("Forward"))
+ 					{
++                        bChange = true;
+ 						mpPlayer->MoveForwards(1,afTimeStep);
+ 					}
+ 					else if(mpInput->IsTriggerd("Backward"))
+ 					{
++                        bChange = true;
+ 						mpPlayer->MoveForwards(-1,afTimeStep);
+ 					}
+ 					else
+@@ -640,10 +703,12 @@ void cButtonHandler::Update(float afTimeStep)
+ 
+ 					if(mpInput->IsTriggerd("Left"))
+ 					{
++                        bChange = true;
+ 						mpPlayer->MoveSideways(-1,afTimeStep);
+ 					}
+ 					else if(mpInput->IsTriggerd("Right"))
+ 					{
++                        bChange = true;
+ 						mpPlayer->MoveSideways(1,afTimeStep);
+ 					}
+ 					else
+@@ -653,43 +718,56 @@ void cButtonHandler::Update(float afTimeStep)
+ 
+ 					if(mpInput->IsTriggerd("LeanLeft"))
+ 					{
++                        bChange = true;
+ 						mpPlayer->Lean(-1,afTimeStep);
+ 					}
+ 					else if(mpInput->IsTriggerd("LeanRight"))
+ 					{
++                        bChange = true;
+ 						mpPlayer->Lean(1,afTimeStep);
+ 					}
+ 					
+ 
+ 					if(mpInput->BecameTriggerd("Jump"))
+ 					{
+-						mpPlayer->Jump();
++                        bChange = true;
++                        mpPlayer->Jump();
+ 					}
+ 					if(mpInput->IsTriggerd("Jump"))
+ 					{
++                        bChange = true;
+ 						mpPlayer->SetJumpButtonDown(true);
+ 					}
+ 					
+ 					if(mpInput->BecameTriggerd("Run"))
+ 					{
++                        bChange = true;
+ 						mpPlayer->StartRun();
+ 					}
+ 					if(mpInput->WasTriggerd("Run"))
+ 					{
++                        bChange = true;
+ 						mpPlayer->StopRun();	
+ 					}
+ 
+ 					if(mpInput->BecameTriggerd("Crouch"))
+ 					{
++                        bChange = true;
+ 						mpPlayer->StartCrouch();
+ 					}
+ 					if(GetToggleCrouch())
+ 					{
+-						if(mpInput->WasTriggerd("Crouch"))	mpPlayer->StopCrouch();	
++                        if(mpInput->WasTriggerd("Crouch"))	{
++                            bChange = true;
++                            mpPlayer->StopCrouch();
++                        }
+ 					}
+ 					else
+ 					{
+-						if(mpInput->IsTriggerd("Crouch")==false) mpPlayer->StopCrouch();	
++						if(mpInput->IsTriggerd("Crouch")==false) {
++                            bChange = true;
++                            mpPlayer->StopCrouch();
++                         }
+ 					}
+ 
+ 					if(mpInput->BecameTriggerd("InteractMode"))
+@@ -705,13 +783,18 @@ void cButtonHandler::Update(float afTimeStep)
+ 					}
+ 					
+ 					//Get the mouse pos and convert it to 0 - 1
+-					if(mpInit->mbHasHaptics==false)
++                    if(mpInit->mbHasHaptics==false)
+ 					{
+ 						cVector2f vRel = mpInput->GetMouse()->GetRelPosition();
+ 						vRel /= mpLowLevelGraphics->GetVirtualSize();
+-
+-						mpPlayer->AddYaw(vRel.x * mfMouseSensitivity);
+-						mpPlayer->AddPitch(vRel.y * mfMouseSensitivity);
++                        float yaw = vRel.x * mfMouseSensitivity;
++                        float pitch = vRel.y * mfMouseSensitivity;
++
++                        if (yaw != 0 || pitch != 0) {
++                            bChange = true;
++						    mpPlayer->AddYaw(yaw);
++						    mpPlayer->AddPitch(pitch);
++                        }
+ 					}
+ 				}
+ 
+@@ -752,6 +835,23 @@ void cButtonHandler::Update(float afTimeStep)
+ 					if(mpInput->BecameTriggerd("Nine")) mpPlayer->StartInventoryShortCut(8);
+ 				}
+ 			}
++
++            if (bChange) {
++                char data[BUFLEN];
++                sprintf(data, "%.15f %.15f",
++                        mpPlayer->GetCamera()->GetYaw(),
++                        mpPlayer->GetCamera()->GetPitch());
++                mpInit->mpNetwork->AddUpdate(YAW_PITCH_UPDATE, data);
++
++                cVector3f v = mpPlayer->GetCharacterBody()->GetPosition();
++                cVector3f v2 = mpPlayer->GetCamera()->GetPosition();
++                char data2[BUFLEN];
++                sprintf(data2, "%.15f %.15f %.15f %.15f %.15f %.15f", v.x, v.y, v.z, v2.x, v2.y, v2.z);
++                mpInit->mpNetwork->AddUpdate(MOVEMENT_UPDATE, data2);
++
++                mpInit->mpNetwork->CommitUpdates();
++            }
++
+ 		}
+ 		if(mpInput->IsTriggerd("Jump")==false || bPlayerStateIsActive==false)
+ 		{
+diff --git a/ButtonHandler.h b/ButtonHandler.h
+index 2a429ca..e333c09 100644
+--- a/ButtonHandler.h
++++ b/ButtonHandler.h
+@@ -54,6 +54,8 @@ public:
+ 	float mfMouseSensitivity;
+ 	bool mbInvertMouseY;
+ 	bool mbToggleCrouch;
++    // Hosted or joined game?
++	bool mbHostedGame;
+ private:
+ 	iAction * ActionFromTypeAndVal(const tString& asName,const tString& asType, const tString& asVal);
+ 	void TypeAndValFromAction(iAction *apAction, tString *apType, tString *apVal);
+@@ -69,6 +71,9 @@ private:
+ 	cPlayer *mpPlayer;
+ 
+ 	eButtonHandlerState mState;
++
++    std::vector<float> yawQueue;
++    std::vector<float> pitchQueue;
+ };
+ 
+ 
+diff --git a/Init.cpp b/Init.cpp
+index 2433884..dd4e9f7 100644
+--- a/Init.cpp
++++ b/Init.cpp
+@@ -60,11 +60,25 @@
+ 
+ #include "IntroStory.h"
+ 
++#include "Server.h"
++#include "Client.h"
++#include "Network.h"
++
+ #include "Version.h" // cool version .h that uses SVN revision #s
+ 
+ // MUST include Last as Unix X11 header defined DestroyAll which blows up MapHandler.h class definition
+ #include "impl/SDLGameSetup.h"
+ 
++#ifdef PENUMBRA_SERVER
++    #define CAPTION "Penumbra server"
++#else
++    #ifdef PENUMBRA_CLIENT
++        #define CAPTION "Penumbra client"
++    #else
++        #define CAPTION "Penumbra"
++    #endif
++#endif
++
+ //Global init...
+ cInit* gpInit;
+ 
+@@ -238,7 +252,7 @@ bool cInit::Init(tString asCommandLine)
+ 	}*/
+ 
+ 	//iResourceBase::SetLogCreateAndDelete(true);
+-	SetWindowCaption("Penumbra Loading...");
++	SetWindowCaption(CAPTION" Loading...");
+ 
+ 	// PERSONAL DIR /////////////////////
+ 	tWString sPersonalDir = GetSystemSpecialPath(eSystemPath_Personal);
+@@ -409,7 +423,7 @@ bool cInit::Init(tString asCommandLine)
+ 	Vars.AddInt("StreamBufferSize",mpConfig->GetInt("Sound", "StreamBufferSize", 64));
+ 	Vars.AddInt("StreamBufferCount",mpConfig->GetInt("Sound", "StreamBufferCount", 4));
+ 	Vars.AddString("DeviceName",mpConfig->GetString("Sound", "DeviceName", "NULL"));
+-	Vars.AddString("WindowCaption", "Penumbra Loading...");
++	Vars.AddString("WindowCaption", CAPTION" Loading...");
+ 
+ 	Vars.AddBool("LowLevelSoundLogging", mpConfig->GetBool("Sound","LowLevelLogging", false));
+ 
+@@ -555,7 +569,10 @@ bool cInit::Init(tString asCommandLine)
+ 	mpGame->GetUpdater()->AddGlobalUpdate(mpButtonHandler);
+ 	mpGame->GetUpdater()->AddGlobalUpdate(mpSaveHandler);
+ 
++    mpNetwork = new cNetwork();
++
+ 	//Add to the default state
++    mpGame->GetUpdater()->AddUpdate("Default", mpNetwork);
+ 	mpGame->GetUpdater()->AddUpdate("Default", mpButtonHandler);
+ 	mpGame->GetUpdater()->AddUpdate("Default", mpPlayer);
+ 	mpGame->GetUpdater()->AddUpdate("Default", mpPlayerHands);
+@@ -648,8 +665,7 @@ bool cInit::Init(tString asCommandLine)
+ 		mpConfig = hplNew( cConfigFile, (gsUserSettingsPath) );
+ 		gbUsingUserSettings = true;
+ 	}
+-
+-	SetWindowCaption("Penumbra");
++	SetWindowCaption(CAPTION);
+ 	
+ 	return true;
+ }
+diff --git a/Init.h b/Init.h
+index 5d4948e..28903aa 100644
+--- a/Init.h
++++ b/Init.h
+@@ -50,6 +50,8 @@ class cIntroStory;
+ 
+ class cMainMenu;
+ 
++class cNetwork;
++
+ #include "GameTypes.h"
+ 
+ #if defined(WIN32)
+@@ -198,6 +200,8 @@ public:
+ 
+ 	cIntroStory* mpIntroStory;	
+ 
++    cNetwork* mpNetwork;
++
+ };
+ 
+ 
+diff --git a/MainMenu.cpp b/MainMenu.cpp
+index 222a0b5..31101c4 100644
+--- a/MainMenu.cpp
++++ b/MainMenu.cpp
+@@ -28,6 +28,9 @@
+ #include "PlayerHelper.h"
+ #include "EffectHandler.h"
+ #include "HapticGameCamera.h"
++#include "Server.h"
++#include "Client.h"
++#include "Network.h"
+ 
+ #include "OALWrapper/OAL_Init.h"
+ 
+@@ -278,6 +281,117 @@ void cMainMenuWidget_Button::OnDraw()
+ //-----------------------------------------------------------------------
+ 
+ //////////////////////////////////////////////////////////////////////////
++// TEXTBOX
++//////////////////////////////////////////////////////////////////////////
++
++//-----------------------------------------------------------------------
++
++cMainMenuWidget_TextBox::cMainMenuWidget_TextBox(cInit *apInit, const cVector3f &avPos, 
++													   const tWString& asText,
++													   cVector2f avFontSize, eFontAlign aAlignment)
++													   : cMainMenuWidget(apInit,avPos,cVector2f(1,1))
++{
++	mpFont = mpInit->mpGame->GetResources()->GetFontManager()->CreateFontData("font_menu_small.fnt",30);
++
++	msText = asText;
++	mvFontSize = avFontSize;
++	mbOver = false;
++
++	mAlignment = aAlignment;
++
++	mfAlpha =0;
++	mfOverTimer =0;
++
++	mRect.w = mpFont->GetLength(mvFontSize,msText.c_str());
++	mRect.h = mvFontSize.y +3;
++	mRect.y = avPos.y+3;
++
++	if(mAlignment == eFontAlign_Center)
++	{
++		mRect.x = avPos.x - mRect.w/2;
++	}
++	else if(mAlignment == eFontAlign_Left)
++	{
++		mRect.x = avPos.x;
++	}
++	else if(mAlignment == eFontAlign_Right)
++	{
++		mRect.x = avPos.x  - mRect.w;
++	}
++}
++
++cMainMenuWidget_TextBox::~cMainMenuWidget_TextBox()
++{
++
++}
++
++void cMainMenuWidget_TextBox::OnUpdate(float afTimeStep)
++{
++	if(mbOver)
++	{
++		mfAlpha += 1.8f*afTimeStep;
++		if(mfAlpha >1) mfAlpha =1;
++	}
++	else
++	{
++		mfAlpha -= 1.3f*afTimeStep;
++		if(mfAlpha <0) mfAlpha =0;
++	}
++
++	mfOverTimer += afTimeStep*0.4f;
++}
++
++//-----------------------------------------------------------------------
++
++void cMainMenuWidget_TextBox::OnMouseOver(bool abOver)
++{
++	mbOver = abOver;
++
++	if(mbOver){
++		mpInit->mpMainMenu->SetButtonTip(msTip);
++	}
++}
++
++//-----------------------------------------------------------------------
++
++void cMainMenuWidget_TextBox::OnMouseDown(eMButton aButton)
++{
++	mpInit->mpGame->GetSound()->GetSoundHandler()->PlayGui("gui_menu_click",false,1);
++}
++
++//-----------------------------------------------------------------------
++
++void cMainMenuWidget_TextBox::OnKeyPress(const tWString& asText)
++{
++    if(asText.compare(_W(" ")) == 0) {
++        msText.erase(msText.end() - 1);
++    } else {
++        msText += asText;
++    }
++}
++
++//-----------------------------------------------------------------------
++
++void cMainMenuWidget_TextBox::OnDraw()
++{
++	mpFont->Draw(mvPositon,mvFontSize,cColor(0.62f ,1),mAlignment,msText.c_str());
++
++	if(mfAlpha > 0)
++	{
++		float fX = 0.8f + sin(mfOverTimer)*0.2f;
++		
++		mpFont->Draw(mvPositon+cVector3f(0,0,1),mvFontSize,cColor(0.9f,0.95f,1.0f,mfAlpha*fX),mAlignment,msText.c_str());
++		mpFont->Draw(mvPositon+cVector3f(2,2,-1),mvFontSize,cColor(0.1f,0.32f,1.0f,mfAlpha*fX),mAlignment,msText.c_str());
++		mpFont->Draw(mvPositon+cVector3f(-2,-2,-1),mvFontSize,cColor(0.1f,0.32f,1.0f,mfAlpha*fX),mAlignment,msText.c_str());
++		mpFont->Draw(mvPositon+cVector3f(3,3,-2),mvFontSize,cColor(0.1f,0.32f,1.0f,mfAlpha*0.5f*fX),mAlignment,msText.c_str());
++		mpFont->Draw(mvPositon+cVector3f(-3,-3,-2),mvFontSize,cColor(0.1f,0.32f,1.0f,mfAlpha*0.5f*fX),mAlignment,msText.c_str());
++	}
++
++}
++
++//-----------------------------------------------------------------------
++
++//////////////////////////////////////////////////////////////////////////
+ // TEXT
+ //////////////////////////////////////////////////////////////////////////
+ 
+@@ -723,6 +837,62 @@ void cMainMenuWidget_Continue::OnMouseDown(eMButton aButton)
+ 		mpInit->mpSaveHandler->LoadGameFromFile(sFile);
+ }
+ 
++//////////////////////////////////////////////////////////////////////////
++// MULTIPLAYER
++//////////////////////////////////////////////////////////////////////////
++
++//-----------------------------------------------------------------------
++
++cMainMenuWidget_Multiplayer::cMainMenuWidget_Multiplayer(cInit *apInit, const cVector3f &avPos, 
++												 const tWString& asText,cVector2f avFontSize, eFontAlign aAlignment)
++												 : cMainMenuWidget_Button(apInit,avPos,asText,
++												 eMainMenuState_LastEnum,avFontSize,aAlignment)
++{
++
++}
++//-----------------------------------------------------------------------
++
++void cMainMenuWidget_Multiplayer::OnMouseDown(eMButton aButton)
++{
++	mpInit->mpGraphicsHelper->DrawLoadingScreen("");
++    mpInit->mpMainMenu->SetActive(false);
++	mpInit->ResetGame(true);
++	mpInit->mpGame->GetUpdater()->SetContainer("Default");
++    mpInit->mpGame->GetScene()->SetDrawScene(true);
++	mpInit->mDifficulty = eGameDifficulty_Hard; // hardcoded for now
++
++    if (mpInit->mpButtonHandler->mbHostedGame) {
++        // creating new game
++	    mpInit->mpMapHandler->Load(	mpInit->msStartMap,mpInit->msStartLink);
++
++        // start up server
++        cServer* server = new cServer(NULL, 55000, mpInit);
++        mpInit->mpNetwork->mpServer = server;
++        mpInit->mpNetwork->mpInit = mpInit;
++        server->Loop();
++    } else {
++        // joining existing game
++        // connect to server ip, get map data
++        const wchar_t* wstr = mpServerIP->msText.c_str();
++        char* ascii = new char[wcslen(wstr) + 1];
++        wcstombs(ascii, wstr, wcslen(wstr));
++        ascii[mpServerIP->msText.length()] = 0;
++        cClient* client = new cClient(ascii, 55000, mpInit);
++        mpInit->mpNetwork->mpClient = client;
++        mpInit->mpNetwork->mpInit = mpInit;
++        client->Loop();
++        // wait for map data to be received
++        while (!client->mbGotMapData)
++            Sleep(20);
++
++        mpInit->mpMapHandler->Load(client->msStartMap, client->msStartLink);
++        char pkt[2];
++        pkt[0] = MAP_LOADED_CMD;
++        pkt[1] = 0;
++        client->SendTcp(pkt);
++    }
++}
++
+ //-----------------------------------------------------------------------
+ 
+ //////////////////////////////////////////////////////////////////////////
+@@ -907,6 +1077,7 @@ public:
+ 
+ 
+ cMainMenuWidget_Text *gpInvertMouseYText=NULL;
++cMainMenuWidget_Text *gpHostGameText=NULL;
+ cMainMenuWidget_Text *gpMouseSensitivityText=NULL;
+ cMainMenuWidget_Text *gpToggleCrouchText=NULL;
+ cMainMenuWidget_Text *gpUseHapticsText=NULL;
+@@ -1045,6 +1216,41 @@ public:
+ 
+ //------------------------------------------------------------
+ 
++class cMainMenuWidget_HostJoinGame : public cMainMenuWidget_Button
++{
++public:
++	cMainMenuWidget_HostJoinGame(cInit *apInit, const cVector3f &avPos, const tWString& asText,cVector2f avFontSize, eFontAlign aAlignment)
++								: cMainMenuWidget_Button(apInit,avPos,asText,eMainMenuState_LastEnum,avFontSize,aAlignment)
++	{
++		msTip = kTranslate("MainMenu", "TipHostJoinGame");
++	}
++	
++	void OnMouseDown(eMButton aButton)
++	{
++		mpInit->mpButtonHandler->mbHostedGame = !mpInit->mpButtonHandler->mbHostedGame;
++        gpHostGameText->msText = mpInit->mpButtonHandler->mbHostedGame ? kTranslate("MainMenu","Host") : 
++																				kTranslate("MainMenu","Join");
++	}
++};
++
++//------------------------------------------------------------
++
++class cMainMenuWidget_ServerIP : public cMainMenuWidget_Button
++{
++public:
++	cMainMenuWidget_ServerIP(cInit *apInit, const cVector3f &avPos, const tWString& asText,cVector2f avFontSize, eFontAlign aAlignment)
++								: cMainMenuWidget_Button(apInit,avPos,asText,eMainMenuState_LastEnum,avFontSize,aAlignment)
++	{
++		msTip = kTranslate("MainMenu", "TipServerIP");
++	}
++	
++	void OnMouseDown(eMButton aButton)
++	{
++	}
++};
++
++//------------------------------------------------------------
++
+ class cMainMenuWidget_MouseSensitivity : public cMainMenuWidget_Button
+ {
+ public:
+@@ -2427,6 +2633,19 @@ void cMainMenu::OnMouseDown(eMButton aButton)
+ 	mbMouseIsDown = true;
+ }
+ 
++void cMainMenu::OnKeyPress(const tWString& asText)
++{
++    tMainMenuWidgetListIt it = mlstWidgets.begin();
++	for(; it != mlstWidgets.end(); ++it)
++	{
++		cMainMenuWidget *pWidget = *it;
++        cMainMenuWidget_TextBox *pTextBox = dynamic_cast<cMainMenuWidget_TextBox *>(pWidget);
++        if (pTextBox != NULL && pTextBox->mbOver) {
++            pTextBox->OnKeyPress(asText);
++        }
++	}
++}
++
+ void cMainMenu::OnMouseUp(eMButton aButton)
+ {
+ 	if(mpCurrentActionText) return;
+@@ -2849,6 +3068,8 @@ void cMainMenu::CreateWidgets()
+ 	vPos.y += 51;
+ 	AddWidgetToState(eMainMenuState_Start,hplNew( cMainMenuWidget_MainButton,(mpInit,vPos,kTranslate("MainMenu","Load Game"),eMainMenuState_LoadGameSpot)) ); 
+ 	vPos.y += 51;
++	AddWidgetToState(eMainMenuState_Start,hplNew( cMainMenuWidget_MainButton,(mpInit,vPos,kTranslate("MainMenu","Multiplayer"),eMainMenuState_Multiplayer)) ); 
++	vPos.y += 51;
+ 	AddWidgetToState(eMainMenuState_Start,hplNew( cMainMenuWidget_MainButton,(mpInit,vPos,kTranslate("MainMenu","Options"),eMainMenuState_Options)) ); 
+ 	vPos.y += 51;
+ 	AddWidgetToState(eMainMenuState_Start,hplNew( cMainMenuWidget_MainButton,(mpInit,vPos,kTranslate("MainMenu","Exit"),eMainMenuState_Exit)) );
+@@ -2886,6 +3107,33 @@ void cMainMenu::CreateWidgets()
+ 	AddWidgetToState(eMainMenuState_Continue,hplNew( cMainMenuWidget_Button,(mpInit,vPos,kTranslate("MainMenu","No"),eMainMenuState_Start,20,eFontAlign_Center)) );
+ 
+ 	///////////////////////////////////
++	// Multiplayer
++	///////////////////////////////////
++	vPos = vTextStart;
++	AddWidgetToState(eMainMenuState_Multiplayer,hplNew( cMainMenuWidget_Text,(mpInit,vPos,kTranslate("MainMenu","Multiplayer"),20,eFontAlign_Center)) ); 
++	vPos.y += 37;
++	cMainMenuWidget *pWidgetHostGame = hplNew( cMainMenuWidget_HostJoinGame,(mpInit,vPos,kTranslate("MainMenu","Host/Join game:"),20,eFontAlign_Right) );
++	AddWidgetToState(eMainMenuState_Multiplayer,pWidgetHostGame); 
++    vPos.x += 10;
++	sText = mpInit->mpButtonHandler->mbHostedGame ? kTranslate("MainMenu","Host") : kTranslate("MainMenu","Join");
++	gpHostGameText = hplNew( cMainMenuWidget_Text,(mpInit,vPos,sText,20,eFontAlign_Left,pWidgetHostGame) );
++	AddWidgetToState(eMainMenuState_Multiplayer,gpHostGameText); 
++    vPos.x -= 10;
++	vPos.y += 37;
++	cMainMenuWidget *pWidgetServerIPLabel = hplNew( cMainMenuWidget_ServerIP,(mpInit,vPos,kTranslate("MainMenu","Server IP:"),20,eFontAlign_Right) );
++	AddWidgetToState(eMainMenuState_Multiplayer,pWidgetServerIPLabel);
++    vPos.x += 10;
++	cMainMenuWidget_TextBox *pWidgetServerIP = hplNew( cMainMenuWidget_TextBox,(mpInit,vPos,_W("127.0.0.1"),20,eFontAlign_Left) );
++	AddWidgetToState(eMainMenuState_Multiplayer,pWidgetServerIP);
++
++	vPos.y += 46;
++	cMainMenuWidget_Multiplayer *pWidgetStartMultiplayer = hplNew( cMainMenuWidget_Multiplayer,(mpInit,vPos,kTranslate("MainMenu","Start game"),22,eFontAlign_Center) );
++    pWidgetStartMultiplayer->mpServerIP = pWidgetServerIP;
++	AddWidgetToState(eMainMenuState_Multiplayer,pWidgetStartMultiplayer);
++    vPos.y += 37;
++	AddWidgetToState(eMainMenuState_Multiplayer,hplNew( cMainMenuWidget_Button,(mpInit,vPos,kTranslate("MainMenu","Back"),eMainMenuState_Start,22,eFontAlign_Center)) );
++
++	///////////////////////////////////
+ 	// Load Game
+ 	///////////////////////////////////
+ 
+diff --git a/MainMenu.h b/MainMenu.h
+index 501c8f1..e886ae2 100644
+--- a/MainMenu.h
++++ b/MainMenu.h
+@@ -31,6 +31,8 @@ enum eMainMenuState
+ {
+ 	eMainMenuState_Start,
+ 	eMainMenuState_NewGame,
++    eMainMenuState_Multiplayer,
++    eMainMenuState_Loading,
+ 	eMainMenuState_Exit,
+ 	eMainMenuState_Continue,
+ 	eMainMenuState_Resume,
+@@ -174,6 +176,41 @@ protected:
+ 
+ //---------------------------------------------
+ 
++class cMainMenuWidget_TextBox : public cMainMenuWidget
++{
++public:
++	cMainMenuWidget_TextBox(cInit *apInit, const cVector3f &avPos, const tWString& asText,
++							cVector2f avFontSize, eFontAlign aAlignment);
++	~cMainMenuWidget_TextBox();
++
++	void OnUpdate(float afTimeStep);
++	void OnMouseOver(bool abOver);
++	void OnDraw();
++
++    void OnKeyPress(const tWString& asText);
++	void OnMouseDown(eMButton aButton);
++	virtual void OnMouseUp(eMButton aButton){};
++
++	void OnActivate(){
++		mfAlpha =0;
++		mfOverTimer =0;
++		mbOver=false;
++	}
++
++	tWString msText;
++protected:
++	iFontData *mpFont;
++	
++	cVector2f mvFontSize;
++	tWString msTip;
++
++	eFontAlign mAlignment;
++
++	float mfOverTimer;
++};
++
++//---------------------------------------------
++
+ class cMainMenuWidget_Text : public cMainMenuWidget
+ {
+ public:
+@@ -313,6 +350,18 @@ public:
+ 
+ //---------------------------------------------
+ 
++class cMainMenuWidget_Multiplayer : public cMainMenuWidget_Button
++{
++public:
++    cMainMenuWidget_TextBox* mpServerIP;
++
++	cMainMenuWidget_Multiplayer(cInit *apInit, const cVector3f &avPos, const tWString& asText,cVector2f avFontSize, eFontAlign aAlignment);
++
++	virtual void OnMouseDown(eMButton aButton);
++};
++
++//---------------------------------------------
++
+ class cMainMenuWidget_Quit : public cMainMenuWidget_Button
+ {
+ public:
+@@ -374,6 +423,7 @@ public:
+ 
+ 	void OnMouseDown(eMButton aButton);
+ 	void OnMouseUp(eMButton aButton);
++    void OnKeyPress(const tWString& asText);
+ 
+ 	void OnMouseDoubleClick(eMButton aButton);
+ 
+diff --git a/Penumbra.sln b/Penumbra.sln
+index f21d4b8..4b6971c 100644
+--- a/Penumbra.sln
++++ b/Penumbra.sln
+@@ -1,21 +1,35 @@
+-Microsoft Visual Studio Solution File, Format Version 8.00
+-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Penumbra", "Penumbra.vcproj", "{C6E72C29-38A3-4897-AA05-E87B0323AA71}"
++Microsoft Visual Studio Solution File, Format Version 11.00
++# Visual Studio 2010
++Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Penumbra", "Penumbra.vcxproj", "{C6E72C29-38A3-4897-AA05-E87B0323AA71}"
+ 	ProjectSection(ProjectDependencies) = postProject
++		{6F50ED2A-585C-4B70-A595-69E149364A8E} = {6F50ED2A-585C-4B70-A595-69E149364A8E}
++		{0780DEC5-A930-4721-9364-17A49D2A4E60} = {0780DEC5-A930-4721-9364-17A49D2A4E60}
+ 	EndProjectSection
+ EndProject
++Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HPL", "..\HPL1Engine\HPL.vcxproj", "{0780DEC5-A930-4721-9364-17A49D2A4E60}"
++EndProject
++Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OALWrapper", "..\OALWrapper\OALWrapper.vcxproj", "{6F50ED2A-585C-4B70-A595-69E149364A8E}"
++EndProject
+ Global
+-	GlobalSection(SolutionConfiguration) = preSolution
+-		Debug = Debug
+-		Release = Release
+-	EndGlobalSection
+-	GlobalSection(ProjectConfiguration) = postSolution
+-		{C6E72C29-38A3-4897-AA05-E87B0323AA71}.Debug.ActiveCfg = Release|Win32
+-		{C6E72C29-38A3-4897-AA05-E87B0323AA71}.Debug.Build.0 = Release|Win32
+-		{C6E72C29-38A3-4897-AA05-E87B0323AA71}.Release.ActiveCfg = Release|Win32
+-		{C6E72C29-38A3-4897-AA05-E87B0323AA71}.Release.Build.0 = Release|Win32
++	GlobalSection(SolutionConfigurationPlatforms) = preSolution
++		Debug|Win32 = Debug|Win32
++		Release|Win32 = Release|Win32
+ 	EndGlobalSection
+-	GlobalSection(ExtensibilityGlobals) = postSolution
++	GlobalSection(ProjectConfigurationPlatforms) = postSolution
++		{C6E72C29-38A3-4897-AA05-E87B0323AA71}.Debug|Win32.ActiveCfg = Debug|Win32
++		{C6E72C29-38A3-4897-AA05-E87B0323AA71}.Debug|Win32.Build.0 = Debug|Win32
++		{C6E72C29-38A3-4897-AA05-E87B0323AA71}.Release|Win32.ActiveCfg = Release|Win32
++		{C6E72C29-38A3-4897-AA05-E87B0323AA71}.Release|Win32.Build.0 = Release|Win32
++		{0780DEC5-A930-4721-9364-17A49D2A4E60}.Debug|Win32.ActiveCfg = Debug|Win32
++		{0780DEC5-A930-4721-9364-17A49D2A4E60}.Debug|Win32.Build.0 = Debug|Win32
++		{0780DEC5-A930-4721-9364-17A49D2A4E60}.Release|Win32.ActiveCfg = Release|Win32
++		{0780DEC5-A930-4721-9364-17A49D2A4E60}.Release|Win32.Build.0 = Release|Win32
++		{6F50ED2A-585C-4B70-A595-69E149364A8E}.Debug|Win32.ActiveCfg = Debug|Win32
++		{6F50ED2A-585C-4B70-A595-69E149364A8E}.Debug|Win32.Build.0 = Debug|Win32
++		{6F50ED2A-585C-4B70-A595-69E149364A8E}.Release|Win32.ActiveCfg = Release|Win32
++		{6F50ED2A-585C-4B70-A595-69E149364A8E}.Release|Win32.Build.0 = Release|Win32
+ 	EndGlobalSection
+-	GlobalSection(ExtensibilityAddIns) = postSolution
++	GlobalSection(SolutionProperties) = preSolution
++		HideSolutionNode = FALSE
+ 	EndGlobalSection
+ EndGlobal
+diff --git a/Player.cpp b/Player.cpp
+index 53cb7d4..0213ffa 100644
+--- a/Player.cpp
++++ b/Player.cpp
+@@ -347,6 +347,7 @@ void cPlayer::SetPrevMoveState(ePlayerMoveState aState)
+ 
+ void cPlayer::SetStartPos(const tString& asName)
+ {
++    msStartPos = asName;
+ 	ChangeState(ePlayerState_Normal);	
+ 
+ 	cWorld3D *pWorld = mpInit->mpGame->GetScene()->GetWorld3D();
+@@ -1073,7 +1074,7 @@ void cPlayer::Update(float afTimeStep)
+ 	
+ 	////////////////////////////////////////
+ 	// Update Node and Footstep sounds
+-	/*//LogUpdate("  took %d ms\n",pSystem->GetLowLevel()->GetTime() - lTime);
++	//LogUpdate("  took %d ms\n",pSystem->GetLowLevel()->GetTime() - lTime);
+ 	lTime = pSystem->GetLowLevel()->GetTime();			
+ 	//LogUpdate("  Footstep sounds\n");
+ 	cMatrixf mtxChar = mpInit->mpGame->GetSound()->GetLowLevel()->GetListenerMatrix();
+@@ -1081,7 +1082,7 @@ void cPlayer::Update(float afTimeStep)
+ 							cVector3f(0,mpCharBody->GetSize().y/2,0));
+ 	mFeetNode.SetMatrix(mtxChar);
+ 	cSoundHandler *pSoundHandler = mpInit->mpGame->GetSound()->GetSoundHandler();
+-	cEntityIterator entIt = mFeetNode.GetEntityInterator();
++	cEntityIterator entIt = mFeetNode.GetEntityIterator();
+ 	while(entIt.HasNext())
+ 	{
+ 		cSoundEntity *pSound = static_cast<cSoundEntity*>(entIt.Next());
+@@ -1091,7 +1092,7 @@ void cPlayer::Update(float afTimeStep)
+ 			pEntry->mpSound->SetPosition(pSound->GetWorldPosition());
+ 		}
+ 	}
+-	//LogUpdate("  took %d ms\n",pSystem->GetLowLevel()->GetTime() - lTime);*/
++	//LogUpdate("  took %d ms\n",pSystem->GetLowLevel()->GetTime() - lTime);
+ 	
+ 	lTime = pSystem->GetLowLevel()->GetTime();			
+ 	//LogUpdate("  misc\n");
+@@ -1173,6 +1174,7 @@ void cPlayer::Update(float afTimeStep)
+ 	// Collide script
+ 	pPhysicsWorld = mpInit->mpGame->GetScene()->GetWorld3D()->GetPhysicsWorld();
+ 	cWorld3D *pWorld = mpInit->mpGame->GetScene()->GetWorld3D();
++
+ 	cCollideData collideData;
+ 	collideData.SetMaxSize(1);
+ 
+diff --git a/Player.h b/Player.h
+index 36966ec..32c7277 100644
+--- a/Player.h
++++ b/Player.h
+@@ -372,6 +372,8 @@ public:
+ 	cVector3f mvLineStart;
+ 	cVector3f mvLineEnd;
+ 
++    tString msStartPos;
++
+ private:
+ 	cInit *mpInit;
+ 
+diff --git a/SaveHandler.cpp b/SaveHandler.cpp
+index dc54c4a..c99be66 100644
+--- a/SaveHandler.cpp
++++ b/SaveHandler.cpp
+@@ -20,6 +20,7 @@
+ 
+ #include "Init.h"
+ #include "MapHandler.h"
++#include "MainMenu.h"
+ #include "Player.h"
+ #include "Inventory.h"
+ #include "Notebook.h"
+@@ -633,6 +634,175 @@ void cSaveHandler::LoadGameFromFile(const tWString& asFile)
+ 
+ //-----------------------------------------------------------------------
+ 
++TiXmlPrinter cSaveHandler::SaveGameToBuf()
++{
++	//Reset all global data
++	mpSavedGame->ResetGlobalData();
++	
++	//////////////////////////////
++	//Save the current map:
++	SaveData(mpInit->mpMapHandler->GetCurrentMapName());
++
++	//////////////////////////////
++	// Save Global variables
++	mpSavedGame->mlstScriptVars.Clear();
++	tScriptVarMap* pGlobalVarMap = mpInit->mpGame->GetScene()->GetGlobalVarMap();
++	tScriptVarMapIt VarIt = pGlobalVarMap->begin();
++	for(; VarIt != pGlobalVarMap->end(); ++VarIt)
++	{
++		mpSavedGame->mlstScriptVars.Add(VarIt->second);
++	}
++	
++	//////////////////////////////
++	//Save global properties
++	mpSavedGame->mDifficulty = mpInit->mDifficulty;
++	mpSavedGame->msOnRadioEndCallback = mpInit->mpRadioHandler->GetOnEndCallback();
++
++	//////////////////////////////
++	//Save player
++	mpInit->mpPlayer->SaveToGlobal(&mpSavedGame->mPlayer);
++
++	//////////////////////////////
++	//Save map handler
++	mpInit->mpMapHandler->SaveToGlobal(&mpSavedGame->mMapHandler);
++	
++	//////////////////////////////
++	//Save loaded maps in Scene
++	mpSavedGame->mvSceneLoadedMap.Clear();
++	tStringSet* pStringSet = mpInit->mpGame->GetScene()->GetLoadedMapsSet();
++	tStringSetIt it = pStringSet->begin();
++	for(; it != pStringSet->end(); ++it)
++	{
++		cSceneLoadedMap_GlobalSave loadedMap;
++		loadedMap.msName = *it;
++		mpSavedGame->mvSceneLoadedMap.Add(loadedMap);
++	}
++	
++	//////////////////////////////
++	//Save inventory
++	mpInit->mpInventory->SaveToGlobal(&mpSavedGame->mInventory);
++
++	/////////////////////////////////
++	//Save notebook
++	mpInit->mpNotebook->SaveToGlobal(&mpSavedGame->mNotebook);
++
++	//////////////////////////////
++	//Load game music
++	mpInit->mpMusicHandler->SaveToGlobal(&mpSavedGame->mGameMusicHandler);
++
++	
++	//////////////////////////////
++	//Save current music
++	cMusicEntry *pMusic = mpInit->mpGame->GetSound()->GetMusicHandler()->GetCurrentSong();
++	if(pMusic)
++	{
++		mpSavedGame->mMusic.msName = pMusic->msFileName;
++		mpSavedGame->mMusic.mfVolume = pMusic->mfMaxVolume;
++		mpSavedGame->mMusic.mbLoop = pMusic->mbLoop;
++	}
++	else
++	{
++		mpSavedGame->mMusic.msName = "";
++	}
++
++
++	return cSerializeClass::SaveToBuf(mpSavedGame,"SaveGame");
++}
++
++//-----------------------------------------------------------------------
++
++void cSaveHandler::LoadGameFromBuf(const char *buf)
++{
++	//1. Reset everything
++	//2. Load all data from file
++	//3. Load data to player, map handler, inventory,etc
++	//4. Load current map in mpSaveGame. Do NOT call any scripts.
++	//5. Load save data to map
++	//6. Play some music
++
++	mpInit->mpMapHandler->GetWorldCache()->DecResources();
++	mpInit->mpMapHandler->GetWorldCache()->AddResources();
++	mpInit->mbResetCache = false;
++	mpInit->ResetGame(false);
++	mpInit->mbResetCache = true;
++	
++	mpInit->mpGame->GetSound()->GetMusicHandler()->Stop(0);
++	mpInit->mpGame->GetSound()->Update(1/60.0f);
++	
++	cSerializeClass::SetLog(false);
++
++	cSerializeClass::LoadFromBuf(mpSavedGame, buf);
++	
++	//////////////////////////////
++	//Load global properties
++	mpInit->mDifficulty = mpSavedGame->mDifficulty;
++	mpInit->mpRadioHandler->SetOnEndCallback(mpSavedGame->msOnRadioEndCallback);
++
++	//////////////////////////////////////////
++	//Load the save map handler data
++	mpInit->mpMapHandler->LoadFromGlobal(&mpSavedGame->mMapHandler);
++
++	//////////////////////////////
++	// Load Global variables
++	cContainerListIterator<cScriptVar> VarIt = mpSavedGame->mlstScriptVars.GetIterator();
++	while(VarIt.HasNext())
++	{
++		cScriptVar &tempVar = VarIt.Next();
++		cScriptVar *pVar = mpInit->mpGame->GetScene()->CreateGlobalVar(tempVar.msName);
++		pVar->mlVal = tempVar.mlVal;
++
++		//Log("Created global var: '%s' %d\n",pVar->msName.c_str(),pVar->mlVal);
++	}
++
++	////////////////////////////////
++	//Load loaded maps in Scene
++	tStringSet* pStringSet = mpInit->mpGame->GetScene()->GetLoadedMapsSet();
++	cContainerListIterator<cSceneLoadedMap_GlobalSave> it = mpSavedGame->mvSceneLoadedMap.GetIterator();
++	while(it.HasNext())
++	{
++		pStringSet->insert(it.Next().msName);
++	}
++
++	/////////////////////////////////
++	//Load inventory
++	mpInit->mpInventory->LoadFromGlobal(&mpSavedGame->mInventory);
++
++	/////////////////////////////////
++	//Load notebook
++	mpInit->mpNotebook->LoadFromGlobal(&mpSavedGame->mNotebook);
++
++	///////////////////////////////
++	//Load the map
++	//TOOD: Use the correct file!
++    mpInit->mpMapHandler->LoadSimple(mpSavedGame->mMapHandler.msCurrentMap+".dae",false);    
++	//LoadData(mpSavedGame->mMapHandler.msCurrentMap);
++	//mpInit->mpMapHandler->Load(mpSavedGame->mMapHandler.msCurrentMap+".dae","link01");
++	
++	//////////////////////////////
++	//Load player properties.
++	mpInit->mpPlayer->LoadFromGlobal(&mpSavedGame->mPlayer);
++
++	//////////////////////////////
++	//Load game music
++	mpInit->mpMusicHandler->LoadFromGlobal(&mpSavedGame->mGameMusicHandler);
++
++	/////////////////////////////
++	//Start Music
++	if(mpSavedGame->mMusic.msName!="" && mpSavedGame->mMusic.mbLoop)
++	{
++		mpInit->mpGame->GetSound()->GetMusicHandler()->Play(mpSavedGame->mMusic.msName,
++														mpSavedGame->mMusic.mfVolume,0.5f,true);
++	}
++
++	//Reset logic timer.
++	mpInit->mpGame->ResetLogicTimer();
++
++	//Quick fix, make sure player is always active:
++	mpInit->mpPlayer->SetActive(true); 
++}
++
++//-----------------------------------------------------------------------
++
+ void cSaveHandler::AutoSave(const tWString &asDir, int alMaxSaves)
+ {
+ 	//////////////////////
+diff --git a/SaveHandler.h b/SaveHandler.h
+index 7e929a1..0210264 100644
+--- a/SaveHandler.h
++++ b/SaveHandler.h
+@@ -27,7 +27,7 @@ class cInit;
+ 
+ #include "GameTypes.h"
+ #include "SaveTypes.h"
+-
++#include "impl/tinyXML/tinyxml.h"
+ 
+ class iGameEntity_SaveData;
+ 
+@@ -368,6 +368,9 @@ public:
+ 	void SaveGameToFile(const tWString& asFile);
+ 	void LoadGameFromFile(const tWString& asFile);
+ 
++	TiXmlPrinter SaveGameToBuf();
++	void LoadGameFromBuf(const char* buf);
++
+ 	void AutoSave(const tWString &asDir, int alMaxSaves);
+ 	void AutoLoad(const tWString &asDir);
+ 
