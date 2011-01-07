@@ -1,0 +1,6 @@
+floppya: 1_44="floppy.img", status=inserted
+boot: floppy
+
+gdbstub: enabled=1, port=1234, text_base=0, data_base=0, bss_base=0
+port_e9_hack: enabled=1
+log: bochsout.txt

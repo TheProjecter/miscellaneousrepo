@@ -1,0 +1,5 @@
+boot: cdrom
+ata0-master: type=cdrom, path=oos.iso, status=inserted
+
+port_e9_hack: enabled=1
+log: bochsout.txt

@@ -1,0 +1,20 @@
+Deps
+====
+rock compiler for ooc - http://github.com/nddrylliog/rock
+grub-legacy
+qemu and/or bochs
+
+Targets
+=======
+make floppy - creates floppy image
+make or make bochs - creates floppy image and runs it in the bochs emulator (see .bochsrc for configuration)
+make qemu - creates floppy image and runs it in qemu
+make bochs-dbg - enables remote debugging of the OS (see README.old)
+
+Modules
+=======
+All new modules should be put in modules/
+All modules start with a generic makefile that can be reused, info.asm contains versioning and exports information, and sdk available to modules is defined in modules/sdk/lang
+
+src/Exports.ooc should be updated with exports from core modules ONLY.
+Specialized drivers (like for different filesystems) should have a generic interface module to load all the drivers of that category and wrap around their API.
