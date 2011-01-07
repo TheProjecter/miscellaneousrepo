@@ -1,0 +1,79 @@
+Comparison between 2x NVIDIA 280M GTX (SLI) with 128 cuda cores and Intel Q9000 @ 2GHz (quad core)
+==================================================================================================
+
+
+1) GPU
+=======
+
+with all modes of operation, but only AES as encryption algo, and only RIPEMD160 as prf:
+
+
+read 32768 passwords
+CUDA-capable device count: 2
+Computing with 2 GPU's...
+success, password = secret, ea = 1, mode = 1, prf = 1
+  GPU Processing time: 144551.203125 (ms)
+
+
+so ~226 passwords per second with 64 * 8 threads per GPU
+
+
+read 32768 passwords
+CUDA-capable device count: 2
+Computing with 2 GPU's...
+success, password = secret, ea = 1, mode = 1, prf = 1
+  GPU Processing time: 106177.875000 (ms)
+
+
+so ~308 passwords per second with 64 * 32 threads per GPU
+
+read 32768 passwords
+CUDA-capable device count: 2
+Computing with 2 GPU's...
+success, password = secret, ea = 1, mode = 1, prf = 1
+  GPU Processing time: 106089.039062 (ms)
+
+so with 128*32 threads per GPU about same result
+
+keeping 128*32 threads for next tests
+
+if uncomenting encryption algos (so that 8/13 are enabled, everything but twofish):
+read 32768 passwords
+CUDA-capable device count: 2
+Computing with 2 GPU's...
+success, password = secret, ea = 1, mode = 1, prf = 1
+  GPU Processing time: 223662.859375 (ms)
+
+so ~146 passwords per second
+
+
+if uncommenting prfs (including the code for launching their derive calculations):
+Main.cpp(81) : cutilCheckMsg() CUTIL CUDA error : reduceKernel_final() execution failed.
+ : unspecified launch failure.
+
+without whirlpool and sha1 (so just ripemd160 and sha512):
+fails after 28 sec
+
+without whirlpool and sha512 (ripemd160 and sha1):
+read 32768 passwords
+CUDA-capable device count: 2
+Computing with 2 GPU's...
+success, password = secret, ea = 1, mode = 1, prf = 1
+  GPU Processing time: 146899.656250 (ms)
+
+
+without sha512:
+read 32768 passwords
+CUDA-capable device count: 2
+Computing with 2 GPU's...
+Main.cpp(81) : cutilCheckMsg() CUTIL CUDA error : reduceKernel_final() execution failed.
+ : unspecified launch failure.
+
+2) CPU
+======
+
+CPU is 2 times slower with only ~151 passwords per second if only AES/RIPEMD160 are used.
+
+With all EAs/PRFs enabled, CPU gets 1935.42s for 32k passwords, 9 times slower (~17 passwords per second)
+that's consistent with the advertised speed of true.crypt brute
+or 16 passwords in 0.894167, so no significant performance loss as input size increases
