@@ -3,20 +3,15 @@ Building
 `scons bin/parser bin/assembler bin/translator' or `make'
 
 Running
-=======
-./parser <grammar_file> <file.jack|directory>
+=======bin/parser <grammar_file> <file.jack|directory>
 
 This will process the input grammar and based on the rules specified therein it will output parsed code from <file.jack> to <file.xml> in XML format.
 
---
-
-./assembler <file.asm>
+--bin/assembler <file.asm>
 
 This will convert assembler instructions to machine code for the Hack platform.
 
---
-
-./translator <file.vm|directory>
+--bin/translator <file.vm|directory>
 
 This will convert virtual machine code to assembler code.
 
