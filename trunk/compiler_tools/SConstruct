@@ -1,0 +1,24 @@
+Help("""
+Run: 'scons assembler' to build the assembler.
+Run: 'scons translator' to build the translator.
+Run: 'scons parser' to build the parser.
+Run: 'scons -c' to perform clean.
+""")
+
+buildmode = ARGUMENTS.get('mode', 'release')
+if not (buildmode in ['debug', 'release']):
+	print "Error: expected 'debug' or 'release', found: " + buildmode
+	Exit(1)
+
+debugflags = ['-Wall', '-Iinclude', '-g']
+releaseflags = ['-Wall', '-Iinclude', '-O2']
+
+env = Environment()
+env.Program('bin/assembler', ['assembler.c'], srcdir='assembler')
+env.Program('bin/translator', ['translator.c'], srcdir='translator')
+env.Program('bin/parser', ['parser.c'], srcdir='parser')
+
+if buildmode == 'debug':
+	env.Append(CCFLAGS=debugflags)
+else:
+	env.Append(CCFLAGS=releaseflags)

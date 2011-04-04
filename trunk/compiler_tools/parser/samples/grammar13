@@ -1,0 +1,5 @@
+master: {statement}+
+statement: {blockStatement} | ({expression};)
+blockStatement: {keyword} \( {expression} \) \{ {statement}* \}
+keyword: (if | for | while)
+expression: [a-zA-Z0-9]+ (== | \+ | \- | =) [a-zA-Z0-9]+

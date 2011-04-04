@@ -1,0 +1,3 @@
+master: {rule1} abc
+rule1: (def)+ {rule2}+
+rule2: xyz

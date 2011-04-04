@@ -1,0 +1,13 @@
+while (a == b) {
+	for (a + b) {
+		a+b;
+		a-b;
+		8-3;
+		if (a == b) {
+			b=a;
+			if(a-b){}
+		}
+		a=b;
+		a==f;
+	}
+}
