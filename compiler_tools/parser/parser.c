@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
-#include "hash.h"
-#include "stack.h"
+#include <hash.h>
+#include <stack.h>
 
 #define LINE_LENGTH 256
 #define OUTPUT_EXTENSION ".xml"
