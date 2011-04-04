@@ -1,0 +1,3 @@
+master: (((while)+) | ((if)*) | (for)) \( (('')* | (ff)*) {expression} \) \{ ({expression};)* \}
+expression: {identifier} (== | \+) {identifier}
+identifier: [a-zA-Z0-9]+

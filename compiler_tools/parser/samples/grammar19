@@ -1,0 +1,7 @@
+master: (((((((a+ | ab)) | abc) de) | abcdef) gh) ijkl) | {rule}+
+rule: ({abc}|{def}|{ghi}|{jkl}|{mno})
+abc: a|b|c
+def: d|e|f
+ghi: g|h|i
+jkl: j|k|l
+mno: m|n|o
