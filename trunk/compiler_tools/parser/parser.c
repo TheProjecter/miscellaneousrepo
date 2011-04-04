@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
-#include <hash.h>
-#include <stack.h>
+#include "hash.h"
+#include "stack.h"
 
 #define LINE_LENGTH 256
 #define OUTPUT_EXTENSION ".xml"
@@ -658,7 +658,7 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 			} else {
 				if (position == length) {
 					// perform clean up before continuing to next file
-					//clean_up(cm, em);
+					clean_up(cm, em);
 					ftruncate(fileno(outfd), ftell(outfd));
 					return 1;
 				} else {
@@ -673,7 +673,6 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 			e = em->element;
 		}
 	}
-// FIXME: make sure all allocated memory is freed (cms, ems, element stack)
 }
 
 int process_file(char* path, int directory_caller) {
