@@ -128,7 +128,7 @@ struct element_match_t {
 	int position;
 	int output_offset;
 	int match_number;
-	int increase_matches;
+	int successful_matches;
 
 	struct stack_t* em_stack;
 	struct stack_t* rc;
@@ -152,7 +152,7 @@ void add_em(struct element_match_t** em, struct class_match_t** cm, struct rule_
 	newem->start = NULL;
 	copy_stack(&newem->rc, rc);
 	newem->em_stack = NULL;
-	newem->increase_matches = 0;
+	newem->successful_matches = 0;
 	// cm is made NULL when em is added
 	*cm = NULL;
 	*em = newem;
@@ -164,7 +164,9 @@ void mark_element_end(struct element_match_t** em, struct class_match_t** cm, st
 	newem->match_number = start->match_number;
 	newem->matches_needed = start->matches_needed;
 	newem->element = start->element;
-	newem->increase_matches = 0;
+	newem->rc = NULL;
+	newem->em_stack = NULL;
+
 	if (*em) {
 		newem->prev = *em;
 		newem->prev_cm = NULL;
@@ -173,8 +175,8 @@ void mark_element_end(struct element_match_t** em, struct class_match_t** cm, st
 		newem->prev = NULL;
 		newem->prev_cm = *cm;
 		*em = newem;
-		*cm = NULL;
 	}
+	*cm = NULL;
 }
 
 inline int is_end_mark(struct element_match_t* em) {
@@ -187,6 +189,7 @@ void next_selection(struct element_match_t* em, struct rule_element_t** e) {
 	em->element = *e;
 	em->matches_needed = is_required(*e);
 	em->match_number = 0;
+	em->successful_matches = 0;
 }
 
 void add_cm(struct class_match_t** cm, struct element_match_t** em, struct rule_element_t* e, struct class_t* c, int position, FILE* outfd, struct stack_t* rc, struct stack_t* em_stack) {
@@ -215,6 +218,7 @@ inline void increase_matches(struct class_match_t* cm, FILE* outfd) {
 inline void increase_matches_needed(struct element_match_t* em) {
 	em->matches_needed++;
 	em->match_number = 0;
+	em->successful_matches = 0;
 }
 
 void copy_stacks(struct class_match_t* cm, struct element_match_t* em, struct stack_t** rc, struct stack_t** em_stack) {
@@ -227,7 +231,7 @@ void copy_stacks(struct class_match_t* cm, struct element_match_t* em, struct st
 	}
 }
 
-void go_back(struct class_match_t** cm, struct element_match_t** em, struct element_match_t** last_em, struct stack_t** rc, struct stack_t** em_stack) {
+void go_back(struct class_match_t** cm, struct element_match_t** em, struct stack_t** rc, struct stack_t** em_stack) {
 	struct element_match_t* tmp_em = NULL;
 	struct class_match_t* tmp_cm = NULL;
 
@@ -268,24 +272,6 @@ void go_back(struct class_match_t** cm, struct element_match_t** em, struct elem
 	}
 	
 	copy_stacks(*cm, *em, rc, em_stack);
-	if (*em) {
-		*last_em = *em;
-	} else {
-		tmp_em = NULL;
-		tmp_cm = *cm;
-		while (!tmp_em || is_end_mark(tmp_em)) {
-			if (tmp_cm) {
-				tmp_em = tmp_cm->prev_em;
-				tmp_cm = tmp_cm->prev;
-			} else if (tmp_em) {
-				tmp_cm = tmp_em->prev_cm;
-				tmp_em = tmp_em->prev;
-			} else {
-				break;
-			}
-		}
-		*last_em = tmp_em;
-	}
 }
 
 inline void reset_position(struct class_match_t* cm, struct element_match_t* em, int* position, FILE* outfd) {
@@ -386,7 +372,7 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 	struct class_t* c;
 	struct range_t* r;
 
-	struct element_match_t *em = NULL, *last_em = NULL;
+	struct element_match_t *em = NULL;
 	struct class_match_t *cm = NULL;
 
 	struct stack_t* top = NULL, *rc = NULL;
@@ -411,28 +397,22 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 		if (is_special(e)) {
 			if (!re_match_element) {
 				// add em if not already present
-				if (!cm && !em) { // make sure we have a previous em to link it to
-					em = PEEK_EM(top);
-				}
 				add_em(&em, &cm, e, position, outfd, rc, top);
-				last_em = em;
 				PUSH_EM(&top, em);
 				copy_stack(&em->em_stack, top);
 			} else {
-				if (em->increase_matches || (can_rematch(cm, em) && !no_increase)) {
+				if (can_rematch(cm, em) && !no_increase) {
 					PUSH_EM(&top, get_start(em));
-					em->increase_matches = 0;
 					copy_stack(&(get_start(em)->em_stack), top);
 				} else if (is_or_expression(e)) {
 					// go to next element in OR expression
-					next_selection(get_start(em), &e);
+					next_selection(em, &e);
 					re_match_element = 0;
-					no_increase = 0;
 				}
 			}
 		}
-		if (cm) em = NULL; // destroy temporarily used em if cm is set
 
+		re_match_class = 0;
 		if (re_match_element || is_required(e)) {
 
 			if (e->children) {
@@ -449,7 +429,6 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 			} else {
 				// normal class containing element (terminal)
 				// classes of normal elements are tracked thru cm's
-				re_match_class = 0;
 				c = e->classes;
 
 				while (c) {
@@ -461,6 +440,7 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 
 					if (advance && position == length) {
 						// file ended too soon, while there is remaining stuff to match
+						re_match_class = 1; // go back to previous class
 						goto backtrack;
 					}
 
@@ -487,9 +467,6 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 
 						if (!re_match_class) {
 							// add new cm
-							if (!cm && !em) { // make sure we have a previous em to link it to
-								em = PEEK_EM(top);
-							}
 							add_cm(&cm, &em, e, c, position, outfd, rc, top);
 						} else {
 							// modify existing cm
@@ -497,7 +474,6 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 						}
 					} else {
 						// match failed, backtrack
-						int popped;
 						if (position > furthest) {
 							// remember character where matching failed
 							*unexpected = ch;
@@ -505,37 +481,24 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 						}
 
 						backtrack:
-						popped = 0;
-
 						if (em && is_end_mark(em)) {
  							if (can_go_back(em, cm)) {
-								go_back(&cm, &em, &last_em, &rc, &top);
+								go_back(&cm, &em, &rc, &top);
 							} else {
 								return 0; // could not go back
 							}
 						}
 
-						if (!cm && !em) {
-							popped = 1;
-							em = POP_EM(&top); // no class matched successfully, return to em (if any)
-						}
-
 						if (cm || em) {
-							if ((em && !popped) || (cm && !re_match_class)) {
+							if (em || !re_match_class) {
 								// reset element stacks first
-								if (em) {
-									copy_stack(&rc, em->rc);
-									copy_stack(&top, em->em_stack);
-								} else if (cm) {
-									copy_stack(&rc, cm->rc);
-									copy_stack(&top, cm->em_stack);
-								}
-								goto do_rematch; // do not go back if not rematching or if em was not popped from the stack
+								copy_stacks(cm, em, &rc, &top);
+								goto do_rematch; // do not go back if not rematching or if em is set
 							}
 
 							// go back
 							if (can_go_back(em, cm)) {
-								go_back(&cm, &em, &last_em, &rc, &top);
+								go_back(&cm, &em, &rc, &top);
 								goto do_rematch;
 							} else {
 								return 0; // could not go back
@@ -548,7 +511,7 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 						if (cm) {
 							if (!can_rematch(cm, em)) {
 								if (can_go_back(em, cm)) {
-									go_back(&cm, &em, &last_em, &rc, &top);
+									go_back(&cm, &em, &rc, &top);
 									goto do_rematch;
 								} else {
 									return 0; // could not go back
@@ -571,7 +534,7 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 							// if one occurrence we cannot match it again
 							if (!can_rematch(cm, em) && !is_or_expression(em->element)) {
 								if (can_go_back(em, cm)) {
-									go_back(&cm, &em, &last_em, &rc, &top);
+									go_back(&cm, &em, &rc, &top);
 									goto do_rematch;
 								} else {
 									return 0; // could not go back
@@ -579,13 +542,13 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 							}
 
 							// go back if match incomplete and it's not an OR expression
-							if (em->match_number < em->matches_needed) {
-								no_increase = 1;
+							if (em->successful_matches < em->matches_needed) {
+								no_increase = 1; // cannot increase any further if last attempt to match this element was not successful
 								if (!is_or_expression(em->element)) {
 									no_increase = 0;
 									// element incompletely matched, go back
 									if (can_go_back(em, cm)) {
-										go_back(&cm, &em, &last_em, &rc, &top);
+										go_back(&cm, &em, &rc, &top);
 										goto do_rematch;
 									} else {
 										return 0; // could not go back
@@ -597,24 +560,23 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 								// in OR expression, but no term after and not rematchable
 								if (can_go_back(em, cm)) {
 									no_increase = 0;
-									go_back(&cm, &em, &last_em, &rc, &top);
+									go_back(&cm, &em, &rc, &top);
 									goto do_rematch;
 								} else {
 									return 0; // could not go back
 								}
 							}
 
-							if (can_rematch(cm, em) && !no_increase) {
+							if (can_rematch(cm, em) && !no_increase) { // both conditions must be satisfied
 								increase_matches_needed(em);
-								em->increase_matches = 1;
 								if (PEEK_EM(top) == em) POP_EM(&top); // pop it since it will be readded
-							}
+							} // else it is an OR expression and it will go to next term
 
 							goto match_element;
 						}
 					}
 
-					re_match_class = 0;
+					re_match_class = 0; // no longer need to rematch
 					c = c->next;
 
 					if (advance) {
@@ -624,20 +586,20 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 			} // end of normal, class containing element processing
 		}
 
-	
 		next:
-		// if is in OR expression and is not parent or rule container should pop because push was done for it
+		// pop pushed element, add end mark for it
 		if (PEEK_EM(top) && (PEEK_EM(top))->element == e && ((is_or_expression(e) && !e->children && !e->rule) || (e->children || e->rule))) {
-			em = POP_EM(&top);
-			if (get_start(em)->match_number < get_start(em)->matches_needed) {
-				get_start(em)->match_number++;
-				mark_element_end(&em, &cm, get_start(em));
+			struct element_match_t* tmp_em = POP_EM(&top);
+
+			if (tmp_em->match_number < tmp_em->matches_needed) {
+				tmp_em->match_number++;
+				tmp_em->successful_matches = tmp_em->match_number;
+				mark_element_end(&em, &cm, tmp_em); // link element end with start
 			}			
 		}
 
 		if (!em || em->match_number >= em->matches_needed) {
 			// element matched enough times, go on to next
-			if (cm) em = NULL; // destroy temporarily used em if cm is set
 
 			// already selected this element, so skip the rest in the OR expression
 			while (e->or) {
@@ -645,7 +607,6 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 			}
 
 			if (e->next) {
-				if (!cm && last_em) em = last_em; // done matching this part, fetch last added em
 				e = e->next; // visit next element
 			} else if (e->parent) {
 				e = e->parent;
@@ -662,7 +623,6 @@ int compile(FILE* fd, FILE* outfd, char* buffer, int length, char* unexpected) {
 					ftruncate(fileno(outfd), ftell(outfd));
 					return 1;
 				} else {
-					if (!cm && last_em) em = last_em;
 					// ran out of classes/elements, file did not end yet, backtrack
 					goto backtrack;
 
@@ -745,7 +705,6 @@ int process_file(char* path, int directory_caller) {
 		buf_len += newidx;
 	}
 	fclose(fd);
-
 	buffer[buf_len] = 0;
 
 	if (!compile(fd, outfd, buffer, buf_len, unexpected)) {
@@ -881,7 +840,6 @@ int process_grammar(char* path) {
 				
 			strncpy(token, line + idx, tlen);		
 			token[tlen] = 0;
-			printf("token = %s len = %d idx = %d\n", token, tlen, idx);
 
 			if (!identifier[0]) {
 				// read rule identifier
@@ -1348,7 +1306,6 @@ int process_grammar(char* path) {
 			
 							strncpy(token, line + idx, tlen);		
 							token[tlen] = 0;
-							printf("token = %s len = %d idx = %d\n", token, tlen, idx);
 							tmp_idx = idx;
 
 							// go back to for loop
