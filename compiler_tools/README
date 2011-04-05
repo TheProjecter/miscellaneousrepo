@@ -29,6 +29,7 @@ Samples are in each of the programs' directories.
 
 TODO
 ====
+- write VM instructions from parsed code
 - make parser generator for LL(k) parsers based on input grammar instead of backtracking parser
 - virtual machine to run .hack code on
 
