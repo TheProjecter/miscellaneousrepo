@@ -11,7 +11,7 @@ opts=0
 
 usage() {
     echo "usage: say [OPTION] <text>"
-    echo "Default OPTIONS: -t /tmp/say -l en"
+    echo "Default OPTIONS: -t /tmp/say -l en -w 10"
     echo "Reads given text using Google translate text2speech."
     echo ""
     echo " -t set temp dir for wav files"
