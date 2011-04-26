@@ -1,0 +1,122 @@
+#!/bin/bash
+
+# max words to play at a time, google translate has a 120 character limit for text2speech
+maxwords=10
+# language to use
+lang="en"
+# pattern for audio files, will be TMPFILE0.wav, TMPFILE1.wav etc.
+tmpfile="/tmp/say"
+RM="rm -rf"
+opts=0
+
+usage() {
+    echo "usage: say [OPTION] <text>"
+    echo "Default OPTIONS: -t /tmp/say -l en"
+    echo "Reads given text using Google translate text2speech."
+    echo ""
+    echo " -t set temp dir for wav files"
+    echo " -l language to use"
+    echo " -w max words to say at a time"
+    echo " -h this message"
+}
+
+quit() {
+    echo "Interrupted"
+    $CLEAN
+    killall -9 mplayer > /dev/null 2>&1
+    exit 0
+}
+
+check_args() {
+    if [ -z "$1" ]; then
+        usage
+        exit 1
+    fi
+
+    while getopts "ht:l:w:" OPTION; do
+        case $OPTION in
+            h)
+                usage
+                exit 1
+            ;;
+            t)
+                tmpfile=$OPTARG
+                shift $((OPTIND-1)); OPTIND=1
+                
+                let opts+=2
+            ;;
+            l)
+                lang=$OPTARG
+                shift $((OPTIND-1)); OPTIND=1
+
+                let opts+=2
+            ;;
+            w)
+                maxwords=$OPTARG
+                shift $((OPTIND-1)); OPTIND=1
+
+                let opts+=2
+            ;;
+            *)
+                usage
+                exit 1
+            ;;
+        esac
+    done
+
+    if [ -z "$1" ]; then
+        usage
+        exit 1
+    fi
+}
+
+buffer() { wget --user-agent=Mozilla "http://translate.google.com/translate_tts?tl=$lang&q=$(echo $* | sed 's#\ #\+#g')" -qO "$tmpfile$files.wav" ; };
+play_buffer() { mplayer "$tmpfile$1.wav" > /dev/null 2>&1 ; };
+
+let MAX-=1
+concat=""
+count=0
+files=0
+
+trap "quit $1" INT TERM
+check_args $@
+
+echo "buffering..."
+CLEAN="$RM $tmpfile*.wav"
+$CLEAN
+
+for (( i = 0 ; i < $opts ; i++ ))
+do
+    shift
+done
+
+words=$(echo $* | wc -w)
+
+for i in $*
+do
+    concat="$concat $i"
+    let count+=1
+
+    if [ $count -eq $maxwords ]; then
+        buffer $concat
+        concat=""
+        count=0
+        let files+=1
+        processed=$maxwords
+        let processed*=$files
+        echo "$processed/$words done"    
+    fi   
+done
+
+if [[ "$count" -ne 0 && "$count" -le "$maxwords" ]]; then
+    buffer $concat
+    let files+=1
+fi
+
+echo "playing..."
+for (( i = 0 ; i < $files ; i++ ))
+do
+    play_buffer $i
+done
+
+$CLEAN
