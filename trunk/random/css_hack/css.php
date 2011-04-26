@@ -53,7 +53,7 @@ Logged info for you: </BR>
     $have = array();
     foreach ($lines as $l) {
         preg_match('/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\-(\d{7})-(\d+)/', trim($l), $matches);
-        if ($matches[1] == $_SERVER[REMOTE_ADDR] && !$have[$matches[3]]) {
+        if ($matches[1] == $_SERVER['REMOTE_ADDR'] && !$have[$matches[3]]) {
             print $sites[$matches[3]] . "</BR>";
             $have[$matches[3]] = 1;
         }
